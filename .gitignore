@@ -1,0 +1,44 @@
+# Build output and temporary directories
+bin/
+obj/
+.tmp_build/
+00_SilksongMobileAPI/
+00_IRIS/*.dll
+
+# Compiled assemblies and binaries
+*.dll
+*.exe
+*.so
+*.dylib
+*.pdb
+
+# Game libraries, proprietary assets, and dependencies
+lib/
+*.bundle
+
+# Logs, test artifacts, and diagnostics
+*.log
+*.log.*
+Logs/
+logs/
+.cecil_cache_*/
+
+# Archives and backups
+*.zip
+*.tar.gz
+*.tgz
+*.bak*
+backup*
+
+# IDE and Editor files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosv
+*.sln.docstates
+
+# OS metadata
+.DS_Store
+Thumbs.db

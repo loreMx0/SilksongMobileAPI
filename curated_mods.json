@@ -1,0 +1,166 @@
+[
+  {
+    "name": "Stylemeter",
+    "owner": "GlowyStar",
+    "full_name": "GlowyStar-Stylemeter",
+    "is_deprecated": false,
+    "versions": [
+      {
+        "version_number": "0.4.1",
+        "description": "Adds an ULTRAKILL-style rank meter HUD tracking combos, parries, aerial hits, and boss kills.",
+        "download_url": "https://gcdn.thunderstore.io/live/repository/packages/GlowyStar-Stylemeter-0.4.1.zip",
+        "file_size": 0,
+        "dependencies": [
+          "BepInEx-BepInExPack_Silksong-5.4.2304"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Bonemaster",
+    "owner": "Kiahah",
+    "full_name": "Kiahah-Bonemaster",
+    "is_deprecated": false,
+    "versions": [
+      {
+        "version_number": "1.0.6",
+        "description": "Adds the custom Bonemaster & Karmelita two-phase boss fight in Hunter's March.",
+        "download_url": "https://gcdn.thunderstore.io/live/repository/packages/Kiahah-Bonemaster-1.0.6.zip",
+        "file_size": 0,
+        "dependencies": [
+          "BepInEx-BepInExPack_Silksong-5.4.2304",
+          "silksong_modding-AssetHelper-1.1.0",
+          "silksong_modding-FsmUtil-0.3.13",
+          "silksong_modding-I18N-1.0.4",
+          "Kiahah-BossKit-1.0.2"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ShamanDiveBind",
+    "owner": "tetriscat66",
+    "full_name": "tetriscat66-ShamanDiveBind",
+    "is_deprecated": false,
+    "versions": [
+      {
+        "version_number": "1.1.1",
+        "description": "Restores the cut Shaman Crest dive bind animation and functionality.",
+        "download_url": "https://gcdn.thunderstore.io/live/repository/packages/tetriscat66-ShamanDiveBind-1.1.1.zip",
+        "file_size": 0,
+        "dependencies": [
+          "BepInEx-BepInExPack_Silksong-5.4.2304",
+          "silksong_modding-FsmUtil-0.3.12"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Stonks",
+    "owner": "SaigoNoTanuki",
+    "full_name": "SaigoNoTanuki-Stonks",
+    "is_deprecated": false,
+    "versions": [
+      {
+        "version_number": "1.0.0",
+        "description": "Increases dropped Rosaries and Shell Shards with configurable multipliers.",
+        "download_url": "https://gcdn.thunderstore.io/live/repository/packages/SaigoNoTanuki-Stonks-1.0.0.zip",
+        "file_size": 0,
+        "dependencies": [
+          "BepInEx-BepInExPack_Silksong-5.4.2304"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Pharlooms_Glory",
+    "owner": "Norrie_Boy",
+    "full_name": "Norrie_Boy-Pharlooms_Glory",
+    "is_deprecated": false,
+    "versions": [
+      {
+        "version_number": "0.1.4",
+        "description": "Restores the cut Red Coral Gorge area, waterfalls, and custom soundtrack in Sands of Karak.",
+        "download_url": "https://gcdn.thunderstore.io/live/repository/packages/Norrie_Boy-Pharlooms_Glory-0.1.4.zip",
+        "file_size": 0,
+        "dependencies": [
+          "BepInEx-BepInExPack_Silksong-5.4.2304",
+          "silksong_modding-AssetHelper-1.1.0",
+          "silksong_modding-Silksong_Prepatcher-1.2.1",
+          "silksong_modding-FsmUtil-0.3.13"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Final_Judge",
+    "owner": "TheWeirdo931",
+    "full_name": "TheWeirdo931-Final_Judge",
+    "is_deprecated": false,
+    "versions": [
+      {
+        "version_number": "1.0.1",
+        "description": "Modifies the Last Judge boss with Deep Docks lava rocks, faster charges, and new attack patterns.",
+        "download_url": "https://gcdn.thunderstore.io/live/repository/packages/TheWeirdo931-Final_Judge-1.0.1.zip",
+        "file_size": 0,
+        "dependencies": [
+          "BepInEx-BepInExPack_Silksong-5.4.2304",
+          "silksong_modding-FsmUtil-0.3.13"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "RebelliousSecondSentinel",
+    "owner": "Danny752786",
+    "full_name": "Danny752786-RebelliousSecondSentinel",
+    "is_deprecated": false,
+    "versions": [
+      {
+        "version_number": "0.1.2",
+        "description": "Upgrades the Second Sentinel boss fight with faster attack combos and aggression.",
+        "download_url": "https://gcdn.thunderstore.io/live/repository/packages/Danny752786-RebelliousSecondSentinel-0.1.2.zip",
+        "file_size": 0,
+        "dependencies": [
+          "BepInEx-BepInExPack_Silksong-5.4.2304",
+          "silksong_modding-FsmUtil-0.2.9"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Boss_Rush_for_Silksong_Pantheon_mod",
+    "owner": "mochasippadev",
+    "full_name": "mochasippadev-Boss_Rush_for_Silksong_Pantheon_mod",
+    "is_deprecated": false,
+    "versions": [
+      {
+        "version_number": "1.1.1",
+        "description": "Adds a full Boss Rush / Pantheon mode accessible from the Title Menu with difficulty options.",
+        "download_url": "https://gcdn.thunderstore.io/live/repository/packages/mochasippadev-Boss_Rush_for_Silksong_Pantheon_mod-1.1.1.zip",
+        "file_size": 0,
+        "dependencies": [
+          "BepInEx-BepInExPack_Silksong-5.4.2304"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Faded_Phantom",
+    "owner": "spaet1s",
+    "full_name": "spaet1s-Faded_Phantom",
+    "is_deprecated": false,
+    "versions": [
+      {
+        "version_number": "0.1.4",
+        "description": "Reworks the Phantom boss encounter in the Exhaust Organ with faster combos and new attacks.",
+        "download_url": "https://gcdn.thunderstore.io/live/repository/packages/spaet1s-Faded_Phantom-0.1.4.zip",
+        "file_size": 0,
+        "dependencies": [
+          "BepInEx-BepInExPack_Silksong-5.4.2304",
+          "silksong_modding-FsmUtil-0.3.11"
+        ]
+      }
+    ]
+  }
+]
