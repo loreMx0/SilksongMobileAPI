@@ -6,7 +6,7 @@
 [![BepInEx](https://img.shields.io/badge/BepInEx-5.4.20%20%2F%205.4.23-orange.svg)](#)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)](#)
 
-> **Official Changelog & Project Dashboard**: [https://bearblog.dev/irislayer/dashboard/](https://bearblog.dev/irislayer/dashboard/)  
+> **Official Changelog & Project Dashboard**: [https://bearblog.dev/irislayer/dashboard/](https://bearblog.dev/irislayer/)  
 > **Target Environment**: Hollow Knight: Silksong (`com.game.silksong`), Android ARM64, Unity 6000.0.x IL2CPP + HybridCLR runtime.
 
 ---
