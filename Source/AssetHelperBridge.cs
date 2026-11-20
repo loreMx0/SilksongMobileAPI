@@ -10687,6 +10687,34 @@ namespace SilksongMobileAPI
         private static Type _ssHallType;
         private static FieldInfo _ssHallActiveFi;
 
+        public static string TextInfoToTitleCaseSafe(System.Globalization.TextInfo ti, string str)
+        {
+            if (string.IsNullOrEmpty(str)) return str;
+            var chars = str.ToCharArray();
+            bool newWord = true;
+            for (int i = 0; i < chars.Length; i++)
+            {
+                char c = chars[i];
+                if (char.IsLetter(c))
+                {
+                    if (newWord)
+                    {
+                        chars[i] = char.ToUpperInvariant(c);
+                        newWord = false;
+                    }
+                    else
+                    {
+                        chars[i] = char.ToLowerInvariant(c);
+                    }
+                }
+                else if (char.IsWhiteSpace(c) || c == '-' || c == '_' || c == '/' || c == '(')
+                {
+                    newWord = true;
+                }
+            }
+            return new string(chars);
+        }
+
         private static void EnsureHkCoreTypesResolved()
         {
             if (_hkScenesType != null && _hkPlayerDataOverlayType != null) return;
@@ -10982,12 +11010,1461 @@ namespace SilksongMobileAPI
             catch { }
         }
 
+        private static bool _hkCoreSceneLocatorRegistered;
+        private static bool _hkCoreSceneProviderWrapped;
+        private static MethodInfo _hkScenesLoadScenePrefixMi;
+
+        public static void EnsureHkCoreAddressablesSceneBridgeRegistered()
+        {
+            if (_hkCoreSceneLocatorRegistered && _hkCoreSceneProviderWrapped) return;
+            try
+            {
+                EnsureHkCoreTypesResolved();
+                if (_hkScenesType == null) return;
+                _hkScenesIsHkSceneMi = _hkScenesType.GetMethod("IsHkScene", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                _hkScenesLoadScenePrefixMi = _hkScenesType.GetMethod("LoadScenePrefix", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (_hkScenesIsHkSceneMi == null || _hkScenesLoadScenePrefixMi == null)
+                {
+                    SilksongMobileAPIPlugin.LogDiagnosticWarn("[HkCoreSceneBridge] Could not find HkScenes.IsHkScene or LoadScenePrefix.");
+                    return;
+                }
+
+                object addrImpl = typeof(Addressables).GetProperty("m_Addressables", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)?.GetValue(null, null)
+                               ?? typeof(Addressables).GetField("m_AddressablesInstance", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)?.GetValue(null);
+                string wrappedFieldName = "none";
+                HkCoreAddressablesSceneProvider provider = null;
+                if (addrImpl != null)
+                {
+                    var implType = addrImpl.GetType();
+                    // 1. Scan all instance fields assignable to ISceneProvider (handles <SceneProvider>k__BackingField or any field name)
+                    foreach (var fi in implType.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
+                    {
+                        if (!typeof(ISceneProvider).IsAssignableFrom(fi.FieldType)) continue;
+                        var curVal = fi.GetValue(addrImpl) as ISceneProvider;
+                        if (curVal is HkCoreAddressablesSceneProvider)
+                        {
+                            _hkCoreSceneProviderWrapped = true;
+                            wrappedFieldName = fi.Name;
+                            break;
+                        }
+                        provider = new HkCoreAddressablesSceneProvider(curVal ?? new SceneProvider());
+                        fi.SetValue(addrImpl, provider);
+                        _hkCoreSceneProviderWrapped = true;
+                        wrappedFieldName = fi.Name;
+                        break;
+                    }
+                    // 2. Fallback: SceneProvider property setter
+                    if (!_hkCoreSceneProviderWrapped)
+                    {
+                        var spProp = implType.GetProperty("SceneProvider", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                        if (spProp != null && spProp.CanWrite)
+                        {
+                            var curVal = spProp.CanRead ? spProp.GetValue(addrImpl, null) as ISceneProvider : null;
+                            provider = new HkCoreAddressablesSceneProvider(curVal ?? new SceneProvider());
+                            spProp.SetValue(addrImpl, provider, null);
+                            _hkCoreSceneProviderWrapped = true;
+                            wrappedFieldName = "prop:SceneProvider";
+                        }
+                    }
+                }
+                if (provider == null) provider = new HkCoreAddressablesSceneProvider(new SceneProvider());
+
+                var rm = Addressables.ResourceManager;
+                if (rm != null && rm.ResourceProviders != null)
+                {
+                    bool hasProv = false;
+                    for (int i = 0; i < rm.ResourceProviders.Count; i++)
+                    {
+                        if (rm.ResourceProviders[i] is HkCoreAddressablesSceneProvider) { hasProv = true; break; }
+                    }
+                    if (!hasProv) rm.ResourceProviders.Add(provider);
+                }
+                if (!_hkCoreSceneLocatorRegistered)
+                {
+                    Addressables.AddResourceLocator(new HkCoreAddressablesSceneLocator());
+                    _hkCoreSceneLocatorRegistered = true;
+                }
+                EnsureHkCoreBossChallengeHookInstalled();
+                    EnsureHkMemoryGuardInstalled();
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Wrapped ISceneProvider (wrapped={_hkCoreSceneProviderWrapped}, field='{wrappedFieldName}', addrImpl={(addrImpl != null)}) & locatorRegistered={_hkCoreSceneLocatorRegistered}.");
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[HkCoreSceneBridge] Registration warning: {ex.Message}");
+            }
+        }
+
+        internal static bool IsHkCoreSceneKey(object key, out string normalizedSceneName)
+        {
+            normalizedSceneName = null;
+            if (key == null || _hkScenesIsHkSceneMi == null) return false;
+            string s = key as string;
+            if (string.IsNullOrEmpty(s)) return false;
+            string sc = s.StartsWith("Scenes/", StringComparison.OrdinalIgnoreCase) ? s.Substring(7) : s;
+            if (sc.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)) sc = sc.Substring(0, sc.Length - 6);
+            try
+            {
+                object res = _hkScenesIsHkSceneMi.Invoke(null, new object[] { sc });
+                if (res is bool b && b)
+                {
+                    normalizedSceneName = sc;
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        internal static bool TryInvokeHkCoreLoadScenePrefix(object key, LoadSceneMode loadMode, bool activateOnLoad, int priority, out AsyncOperationHandle<SceneInstance> resultHandle)
+        {
+            resultHandle = default;
+            if (_hkScenesLoadScenePrefixMi == null) return false;
+            if ((_directHkSessionActive || Time.realtimeSinceStartup < _directHkBenchReturnUntilRealtime) &&
+                key is string ks &&
+                (ks.IndexOf("GG_Atrium", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 ks.IndexOf("GG_Workshop", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Blocked Godhome hub Addressables load '{ks}' during direct-boss bench return.");
+                return false;
+            }
+            try
+            {
+                var ps = _hkScenesLoadScenePrefixMi.GetParameters();
+                var invokeArgs = new object[ps.Length];
+                int resultIdx = -1;
+                for (int i = 0; i < ps.Length; i++)
+                {
+                    var p = ps[i];
+                    var pt = p.ParameterType.IsByRef ? p.ParameterType.GetElementType() : p.ParameterType;
+                    if (p.Name == "__result" || pt == typeof(AsyncOperationHandle<SceneInstance>))
+                    {
+                        resultIdx = i;
+                        invokeArgs[i] = default(AsyncOperationHandle<SceneInstance>);
+                    }
+                    else if (pt == typeof(object) || pt == typeof(string))
+                    {
+                        invokeArgs[i] = key;
+                    }
+                    else if (pt == typeof(LoadSceneMode))
+                    {
+                        invokeArgs[i] = loadMode;
+                    }
+                    else if (pt == typeof(bool))
+                    {
+                        invokeArgs[i] = activateOnLoad;
+                    }
+                    else if (pt == typeof(int))
+                    {
+                        invokeArgs[i] = priority;
+                    }
+                    else if (pt == typeof(SceneReleaseMode))
+                    {
+                        invokeArgs[i] = SceneReleaseMode.ReleaseSceneWhenSceneUnloaded;
+                    }
+                }
+                _hkScenesLoadScenePrefixMi.Invoke(null, invokeArgs);
+                if (resultIdx >= 0 && invokeArgs[resultIdx] is AsyncOperationHandle<SceneInstance> h && h.IsValid())
+                {
+                    resultHandle = h;
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Routed Addressables scene '{key}' -> HkCore.HkScenes.LoadScenePrefix (valid handle!).");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticError($"[HkCoreSceneBridge] LoadScenePrefix invoke error for '{key}': {ex}");
+            }
+            return false;
+        }
+
+        private sealed class HkCoreAddressablesSceneLocator : IResourceLocator
+        {
+            public string LocatorId => "IRIS.HkCoreSceneLocator";
+            public IEnumerable<object> Keys => Array.Empty<object>();
+            public IEnumerable<IResourceLocation> AllLocations => Array.Empty<IResourceLocation>();
+
+            public bool Locate(object key, Type type, out IList<IResourceLocation> locations)
+            {
+                locations = null;
+                if (type != null && type != typeof(SceneInstance) && type != typeof(object))
+                    return false;
+                if (!IsHkCoreSceneKey(key, out _))
+                    return false;
+                string keyStr = key as string ?? "";
+                var loc = new ResourceLocationBase(keyStr, keyStr, "IRIS.HkCoreSceneProvider", typeof(SceneInstance));
+                locations = new List<IResourceLocation>(1) { loc };
+                return true;
+            }
+        }
+
+        private sealed class HkCoreAddressablesSceneProvider : ISceneProvider, IResourceProvider
+        {
+            private readonly ISceneProvider _fallback;
+
+            public HkCoreAddressablesSceneProvider(ISceneProvider fallback)
+            {
+                _fallback = fallback ?? new SceneProvider();
+            }
+
+            public string ProviderId => "IRIS.HkCoreSceneProvider";
+            public ProviderBehaviourFlags BehaviourFlags => ProviderBehaviourFlags.None;
+
+            public Type GetDefaultType(IResourceLocation location) => typeof(SceneInstance);
+
+            public bool CanProvide(Type t, IResourceLocation location)
+            {
+                return t == typeof(SceneInstance) && location != null && location.ProviderId == "IRIS.HkCoreSceneProvider";
+            }
+
+            public void Provide(ProvideHandle provideHandle)
+            {
+                provideHandle.Complete<object>(null, false, new NotSupportedException("Use ProvideScene for HkCore scenes."));
+            }
+
+            public void Release(IResourceLocation location, object asset) { }
+
+            public AsyncOperationHandle<SceneInstance> ProvideScene(UnityEngine.ResourceManagement.ResourceManager resourceManager, IResourceLocation location, LoadSceneMode loadMode, bool activateOnLoad, int priority)
+            {
+                if (location != null && location.ProviderId == "IRIS.HkCoreSceneProvider" &&
+                    TryInvokeHkCoreLoadScenePrefix(location.InternalId, loadMode, activateOnLoad, priority, out var h))
+                    return h;
+                return _fallback.ProvideScene(resourceManager, location, loadMode, activateOnLoad, priority);
+            }
+
+            public AsyncOperationHandle<SceneInstance> ProvideScene(UnityEngine.ResourceManagement.ResourceManager resourceManager, IResourceLocation location, LoadSceneParameters loadSceneParameters, bool activateOnLoad, int priority)
+            {
+                if (location != null && location.ProviderId == "IRIS.HkCoreSceneProvider" &&
+                    TryInvokeHkCoreLoadScenePrefix(location.InternalId, LoadSceneMode.Additive, activateOnLoad, priority, out var h))
+                    return h;
+                return _fallback.ProvideScene(resourceManager, location, loadSceneParameters, activateOnLoad, priority);
+            }
+
+            public AsyncOperationHandle<SceneInstance> ProvideScene(UnityEngine.ResourceManagement.ResourceManager resourceManager, IResourceLocation location, LoadSceneParameters loadSceneParameters, SceneReleaseMode releaseMode, bool activateOnLoad, int priority)
+            {
+                if (location != null && location.ProviderId == "IRIS.HkCoreSceneProvider" &&
+                    TryInvokeHkCoreLoadScenePrefix(location.InternalId, LoadSceneMode.Additive, activateOnLoad, priority, out var h))
+                    return h;
+                return _fallback.ProvideScene(resourceManager, location, loadSceneParameters, releaseMode, activateOnLoad, priority);
+            }
+
+            public AsyncOperationHandle<SceneInstance> ReleaseScene(UnityEngine.ResourceManagement.ResourceManager resourceManager, AsyncOperationHandle<SceneInstance> sceneLoadHandle)
+            {
+                return _fallback.ReleaseScene(resourceManager, sceneLoadHandle);
+            }
+        }
+
+        private sealed class SafeStringDictMirror
+        {
+            public int Version = int.MinValue;
+            public Dictionary<string, object> Map;
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, SafeStringDictMirror> _safeStringDictMirrors =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<object, SafeStringDictMirror>();
+
+        private static Dictionary<string, object> GetSafeStringDictMirror(object dict)
+        {
+            if (dict == null) return null;
+            var mirror = _safeStringDictMirrors.GetOrCreateValue(dict);
+            var dt = dict.GetType();
+            var verFi = dt.GetField("version", BindingFlags.Instance | BindingFlags.NonPublic)
+                     ?? dt.GetField("_version", BindingFlags.Instance | BindingFlags.NonPublic);
+            int curVer = verFi != null ? (int)verFi.GetValue(dict) : -1;
+            lock (mirror)
+            {
+                if (mirror.Map != null && mirror.Version == curVer && curVer >= 0)
+                    return mirror.Map;
+
+                if (mirror.Map == null)
+                {
+                    var cmpFi = dt.GetField("comparer", BindingFlags.Instance | BindingFlags.NonPublic)
+                             ?? dt.GetField("_comparer", BindingFlags.Instance | BindingFlags.NonPublic);
+                    var cmp = cmpFi?.GetValue(dict) as IEqualityComparer<string>;
+                    mirror.Map = new Dictionary<string, object>(cmp ?? StringComparer.Ordinal);
+                }
+                else
+                {
+                    mirror.Map.Clear();
+                }
+
+                var countFi = dt.GetField("count", BindingFlags.Instance | BindingFlags.NonPublic)
+                           ?? dt.GetField("_count", BindingFlags.Instance | BindingFlags.NonPublic);
+                var entriesFi = dt.GetField("entries", BindingFlags.Instance | BindingFlags.NonPublic)
+                             ?? dt.GetField("_entries", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (countFi != null && entriesFi != null)
+                {
+                    int count = (int)countFi.GetValue(dict);
+                    var entries = entriesFi.GetValue(dict) as Array;
+                    if (entries != null && count > 0)
+                    {
+                        var et = entries.GetType().GetElementType();
+                        var hashFi = et?.GetField("hashCode", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        var keyFi = et?.GetField("key", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        var valFi = et?.GetField("value", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        int limit = Math.Min(count, entries.Length);
+                        for (int i = 0; i < limit; i++)
+                        {
+                            object entry = entries.GetValue(i);
+                            if (entry == null) continue;
+                            if (hashFi != null && (int)hashFi.GetValue(entry) < 0) continue;
+                            var k = keyFi?.GetValue(entry) as string;
+                            if (k != null)
+                                mirror.Map[k] = valFi?.GetValue(entry);
+                        }
+                    }
+                }
+                mirror.Version = curVer;
+                return mirror.Map;
+            }
+        }
+
+        public static ValueTuple<string, string> SafeDictGet_Str_VT2StrStr(object dict, string key)
+        {
+            var map = GetSafeStringDictMirror(dict);
+            if (map != null && key != null && map.TryGetValue(key, out var val) && val is ValueTuple<string, string> vt)
+                return vt;
+            throw new KeyNotFoundException($"Key '{key}' was not present in dictionary.");
+        }
+
+        public static IEnumerable<string> SafeDictGetKeys_Str_VT2StrStr(object dict)
+        {
+            var map = GetSafeStringDictMirror(dict);
+            return map != null ? (IEnumerable<string>)new List<string>(map.Keys) : Array.Empty<string>();
+        }
+
+        public static bool SafeDictTryGet_Str_VT2StrArrStrArr(object dict, string key, out ValueTuple<string[], string[]> value)
+        {
+            var map = GetSafeStringDictMirror(dict);
+            if (map != null && key != null && map.TryGetValue(key, out var val) && val is ValueTuple<string[], string[]> vt)
+            {
+                value = vt;
+                return true;
+            }
+            value = default;
+            return false;
+        }
+
+        public static ValueTuple<string, int> SafeDictGet_Str_VT2StrInt(object dict, string key)
+        {
+            var map = GetSafeStringDictMirror(dict);
+            if (map != null && key != null && map.TryGetValue(key, out var val) && val is ValueTuple<string, int> vt)
+                return vt;
+            throw new KeyNotFoundException($"Key '{key}' was not present in dictionary.");
+        }
+
+        public static bool SafeDictContainsKey_Str_VT2StrInt(object dict, string key)
+        {
+            var map = GetSafeStringDictMirror(dict);
+            return map != null && key != null && map.ContainsKey(key);
+        }
+
+        private static bool _hkSceneMemHooked;
+        private static int _savedMipmapLimit = -1;
+
+        private static readonly HashSet<int> _downscaledHkTexIds = new HashSet<int>();
+        private const int HkMaxTextureDim = 1024;
+
+        private static Texture2D CreateDownscaledCopy(Texture2D srcTex, int maxDim, out long savedBytes)
+        {
+            savedBytes = 0;
+            if (srcTex == null) return null;
+            int w = srcTex.width;
+            int h = srcTex.height;
+            if (w <= maxDim && h <= maxDim) return null;
+
+            float scale = Mathf.Min((float)maxDim / w, (float)maxDim / h);
+            int nw = Mathf.Max(4, Mathf.RoundToInt(w * scale));
+            int nh = Mathf.Max(4, Mathf.RoundToInt(h * scale));
+
+            RenderTexture rt = RenderTexture.GetTemporary(nw, nh, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
+            RenderTexture prev = RenderTexture.active;
+            try
+            {
+                Graphics.Blit(srcTex, rt);
+                RenderTexture.active = rt;
+                var dst = new Texture2D(nw, nh, TextureFormat.RGBA32, false);
+                dst.name = srcTex.name + "_hk1024";
+                dst.filterMode = srcTex.filterMode;
+                dst.wrapMode = srcTex.wrapMode;
+                dst.ReadPixels(new Rect(0f, 0f, nw, nh), 0, 0, false);
+                dst.Apply(false, true);
+                _downscaledHkTexIds.Add(dst.GetInstanceID());
+                savedBytes = ((long)w * h * 4L) - ((long)nw * nh * 4L);
+                return dst;
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(rt);
+            }
+        }
+
+        public static void DownscaleOversizedHkSceneTextures(Scene scene)
+        {
+            try
+            {
+                if (!scene.IsValid() || !scene.isLoaded) return;
+                var roots = scene.GetRootGameObjects();
+                if (roots == null || roots.Length == 0) return;
+
+                var replacements = new Dictionary<Texture2D, Texture2D>();
+                var mats = new HashSet<Material>();
+                var colls = new HashSet<tk2dSpriteCollectionData>();
+                long totalSavedBytes = 0;
+
+                for (int r = 0; r < roots.Length; r++)
+                {
+                    var root = roots[r];
+                    if (root == null) continue;
+                    var renderers = root.GetComponentsInChildren<Renderer>(true);
+                    if (renderers != null)
+                    {
+                        for (int i = 0; i < renderers.Length; i++)
+                        {
+                            var ren = renderers[i];
+                            if (ren == null) continue;
+                            var sm = ren.sharedMaterials;
+                            if (sm == null) continue;
+                            for (int m = 0; m < sm.Length; m++)
+                            {
+                                if (sm[m] != null) mats.Add(sm[m]);
+                            }
+                        }
+                    }
+                    var sprites = root.GetComponentsInChildren<tk2dBaseSprite>(true);
+                    if (sprites != null)
+                    {
+                        for (int i = 0; i < sprites.Length; i++)
+                        {
+                            var c = sprites[i]?.Collection;
+                            if (c != null) colls.Add(c);
+                        }
+                    }
+                }
+
+                foreach (var c in colls)
+                {
+                    if (c.materials != null)
+                        for (int i = 0; i < c.materials.Length; i++)
+                            if (c.materials[i] != null) mats.Add(c.materials[i]);
+                    if (c.materialInsts != null)
+                        for (int i = 0; i < c.materialInsts.Length; i++)
+                            if (c.materialInsts[i] != null) mats.Add(c.materialInsts[i]);
+                }
+
+                // Identify boss/enemy textures (HealthManager hierarchies) so bosses stay crisp (<=2048px) while arena/crowd/background sprites compress hard (<=512px)
+                var bossTexIds = new HashSet<int>();
+                for (int r = 0; r < roots.Length; r++)
+                {
+                    var root = roots[r];
+                    if (root == null) continue;
+                    var hms = root.GetComponentsInChildren<HealthManager>(true);
+                    if (hms == null) continue;
+                    for (int h = 0; h < hms.Length; h++)
+                    {
+                        if (hms[h] == null) continue;
+                        var bRends = hms[h].GetComponentsInChildren<Renderer>(true);
+                        if (bRends != null)
+                        {
+                            for (int k = 0; k < bRends.Length; k++)
+                            {
+                                var sm = bRends[k]?.sharedMaterials;
+                                if (sm == null) continue;
+                                for (int m = 0; m < sm.Length; m++)
+                                    if (sm[m] != null && sm[m].HasProperty("_MainTex") && sm[m].mainTexture is Texture2D bt && bt != null)
+                                        bossTexIds.Add(bt.GetInstanceID());
+                            }
+                        }
+                        var bSps = hms[h].GetComponentsInChildren<tk2dBaseSprite>(true);
+                        if (bSps != null)
+                        {
+                            for (int k = 0; k < bSps.Length; k++)
+                            {
+                                var c = bSps[k]?.Collection;
+                                if (c?.textures == null) continue;
+                                for (int ti = 0; ti < c.textures.Length; ti++)
+                                    if (c.textures[ti] is Texture2D ct && ct != null)
+                                        bossTexIds.Add(ct.GetInstanceID());
+                            }
+                        }
+                    }
+                }
+
+                int arenaCount = 0;
+                int bossCount = 0;
+                foreach (var mat in mats)
+                {
+                    if (mat == null || !mat.HasProperty("_MainTex")) continue;
+                    if (!(mat.mainTexture is Texture2D t2d) || t2d == null) continue;
+                    int tid = t2d.GetInstanceID();
+                    if (_downscaledHkTexIds.Contains(tid)) continue;
+                    bool isBossTex = bossTexIds.Contains(tid);
+                    bool isGiantHub = string.Equals(scene.name, "GG_Workshop", StringComparison.OrdinalIgnoreCase) || string.Equals(scene.name, "GG_Atrium", StringComparison.OrdinalIgnoreCase);
+                    int capDim = isBossTex ? 2048 : (isGiantHub ? 512 : 1024);
+                    if (t2d.width <= capDim && t2d.height <= capDim) continue;
+
+                    if (!replacements.TryGetValue(t2d, out var small))
+                    {
+                        small = CreateDownscaledCopy(t2d, capDim, out long sb);
+                        if (small != null)
+                        {
+                            replacements[t2d] = small;
+                            totalSavedBytes += sb;
+                            DownscaledTextureCount++;
+                            if (isBossTex) bossCount++; else arenaCount++;
+                        }
+                    }
+                    if (small != null)
+                        mat.mainTexture = small;
+                }
+
+                foreach (var c in colls)
+                {
+                    if (c.textures != null)
+                    {
+                        for (int i = 0; i < c.textures.Length; i++)
+                        {
+                            if (c.textures[i] is Texture2D ct && replacements.TryGetValue(ct, out var small))
+                                c.textures[i] = small;
+                        }
+                    }
+                    if (c.textureInsts != null)
+                    {
+                        for (int i = 0; i < c.textureInsts.Length; i++)
+                        {
+                            if (c.textureInsts[i] != null && replacements.TryGetValue(c.textureInsts[i], out var small))
+                                c.textureInsts[i] = small;
+                        }
+                    }
+                }
+
+                // Disable purely decorative far-background ParticleSystems (z > 1.0f, non-boss/non-hazard) without altering SpriteRenderer meshes
+                int disabledBgParticles = 0;
+                for (int r = 0; r < roots.Length; r++)
+                {
+                    var root = roots[r];
+                    if (root == null) continue;
+                    var pss = root.GetComponentsInChildren<ParticleSystem>(true);
+                    if (pss != null)
+                    {
+                        for (int i = 0; i < pss.Length; i++)
+                        {
+                            var ps = pss[i];
+                            if (ps == null || ps.transform.position.z <= 1.0f) continue;
+                            if (ps.GetComponentInParent<HealthManager>() != null || ps.GetComponentInParent<DamageHero>() != null) continue;
+                            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                            ps.gameObject.SetActive(false);
+                            disabledBgParticles++;
+                        }
+                    }
+                }
+
+                foreach (var origTex in replacements.Keys)
+                {
+                    try { Resources.UnloadAsset(origTex); } catch { }
+                }
+
+                if (replacements.Count > 0 || disabledBgParticles > 0)
+                {
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreMemGuard] Compressed {arenaCount} arena/hub & {bossCount} huge boss (<=2048px) texture(s), disabled {disabledBgParticles} bg particles in '{scene.name}' (~{totalSavedBytes / (1024 * 1024)} MB GPU/RAM freed).");
+                }
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[HkCoreMemGuard] DownscaleOversizedHkSceneTextures('{scene.name}') error: {ex.Message}");
+            }
+        }
+
+        public static void EnsureHkMemoryGuardInstalled()
+        {
+            if (_hkSceneMemHooked) return;
+            _hkSceneMemHooked = true;
+            SceneManager.sceneLoaded += (Scene loaded, LoadSceneMode mode) =>
+            {
+                try
+                {
+                    if (IsHkCoreSceneKey(loaded.name, out _))
+                        DownscaleOversizedHkSceneTextures(loaded);
+                    EnsureHkCoreToolsUnlockedInPlayerData();
+                }
+                catch { }
+            };
+            SceneManager.sceneUnloaded += (Scene unloaded) =>
+            {
+                // Unloading is handled once cleanly in LaunchSingleHkBossCoroutine / bench return (avoiding duplicate 5s UnloadUnusedAssets stalls!)
+            };
+            SceneManager.activeSceneChanged += (Scene prev, Scene next) =>
+            {
+                try
+                {
+                    bool nextIsHk = IsHkCoreSceneKey(next.name, out _);
+                    if (nextIsHk)
+                    {
+                        if (_savedMipmapLimit < 0)
+                            _savedMipmapLimit = QualitySettings.globalTextureMipmapLimit;
+                        if (QualitySettings.globalTextureMipmapLimit < 1)
+                            QualitySettings.globalTextureMipmapLimit = 1;
+                    }
+                    else if (_savedMipmapLimit >= 0)
+                    {
+                        QualitySettings.globalTextureMipmapLimit = _savedMipmapLimit;
+                        _savedMipmapLimit = -1;
+                    }
+                }
+                catch { }
+            };
+        }
+
+        private static PlayerData _hkToolsUnlockedForPd;
+
+        public static void EnsureHkCoreToolsUnlockedInPlayerData()
+        {
+            try
+            {
+                var pd = PlayerData.instance;
+                if (pd == null || HeroController.instance == null || ReferenceEquals(pd, _hkToolsUnlockedForPd)) return;
+                EnsureHkCoreTypesResolved();
+                var hkAsm = _hkScenesType?.Assembly;
+                if (hkAsm == null) return;
+
+                var toolNames = new List<string>(2);
+                var htType = hkAsm.GetType("HkCore.HkHeroTools", false);
+                if (htType != null)
+                {
+                    const BindingFlags sbf = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+                    if (htType.GetProperty("ShadeCloak", sbf)?.GetValue(null) is ToolItem sc && !string.IsNullOrEmpty(sc.name))
+                        toolNames.Add(sc.name);
+                    if (htType.GetProperty("CrystalHeart", sbf)?.GetValue(null) is ToolItem ch && !string.IsNullOrEmpty(ch.name))
+                        toolNames.Add(ch.name);
+                }
+                if (toolNames.Count == 0)
+                {
+                    toolNames.Add("HkCore Shade Cloak");
+                    toolNames.Add("HkCore Crystal Heart");
+                }
+
+                int unlocked = 0;
+                for (int i = 0; i < toolNames.Count; i++)
+                {
+                    string tn = toolNames[i];
+                    var data = pd.GetToolData(tn);
+                    if (!data.IsUnlocked || data.IsHidden)
+                    {
+                        data.IsUnlocked = true;
+                        data.IsHidden = false;
+                        data.HasBeenSeen = true;
+                        pd.SetToolData(tn, data);
+                        unlocked++;
+                    }
+                }
+                _hkToolsUnlockedForPd = pd;
+                if (unlocked > 0)
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreTools] Unlocked {unlocked} HK1 tool(s) ({string.Join(", ", toolNames)}) in PlayerData for Crest equipping.");
+
+                // Clean up Team Cherry placeholder Yoshi sprite on Silksong's unused Shadow Recharge / shadowRingPrefab (keeps dark particles + sound!)
+                try
+                {
+                    int cleaned = 0;
+                    void CleanShadowRingObj(GameObject go)
+                    {
+                        if (go == null) return;
+                        foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+                        {
+                            if (r == null || r is ParticleSystemRenderer) continue;
+                            r.enabled = false;
+                            cleaned++;
+                        }
+                    }
+                    var hc = HeroController.instance;
+                    if (hc != null)
+                    {
+                        foreach (var tr in hc.GetComponentsInChildren<Transform>(true))
+                        {
+                            if (tr == null) continue;
+                            string n = tr.name ?? "";
+                            if (n.IndexOf("Shadow Recharge", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                n.IndexOf("ShadowRing", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                n.IndexOf("Shadow Ring", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                CleanShadowRingObj(tr.gameObject);
+                            }
+                        }
+                        const BindingFlags hbf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+                        foreach (var fi in typeof(HeroController).GetFields(hbf))
+                        {
+                            if (fi.Name.IndexOf("shadow", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                (fi.Name.IndexOf("Recharge", StringComparison.OrdinalIgnoreCase) >= 0 || fi.Name.IndexOf("Ring", StringComparison.OrdinalIgnoreCase) >= 0))
+                            {
+                                if (fi.GetValue(hc) is GameObject pref) CleanShadowRingObj(pref);
+                            }
+                        }
+                    }
+                    // Also check HkCore.HkHeroFx cached shadowRingPrefab if HkCore loaded one
+                    var fxType = hkAsm.GetType("HkCore.HkHeroFx", false);
+                    if (fxType != null)
+                    {
+                        const BindingFlags sbf2 = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+                        foreach (var fi in fxType.GetFields(sbf2))
+                        {
+                            if (fi.Name.IndexOf("shadowRing", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                fi.Name.IndexOf("Recharge", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                if (fi.GetValue(null) is GameObject pref) CleanShadowRingObj(pref);
+                            }
+                        }
+                    }
+                    if (cleaned > 0)
+                        SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreTools] Disabled {cleaned} placeholder Shadow Recharge sprite renderer(s) (keeps shadow particles & audio).");
+                }
+                catch { }
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[HkCoreTools] Unlock warning: {ex.Message}");
+            }
+        }
+
+        public static void TrimMemoryForHkTransition(string targetScene)
+        {
+            try
+            {
+                EnsureHkMemoryGuardInstalled();
+                if (_savedMipmapLimit < 0)
+                    _savedMipmapLimit = QualitySettings.globalTextureMipmapLimit;
+                if (QualitySettings.globalTextureMipmapLimit < 1)
+                    QualitySettings.globalTextureMipmapLimit = 1;
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreMemGuard] Prepared mipmapLimit=1 before '{targetScene}' (managedMB={GC.GetTotalMemory(false) / (1024 * 1024)}).");
+            }
+            catch { }
+        }
+
+        private static bool _hkBossChallengeHookInstalled;
+        private static FieldInfo _bcuiBossStatueFi;
+        private static FieldInfo _bcuiOnCancelFi;
+        private static FieldInfo _bcuiOnLevelSelectedFi;
+
+        public static void EnsureHkCoreBossChallengeHookInstalled()
+        {
+            if (_hkBossChallengeHookInstalled) return;
+            try
+            {
+                var loadBossMi = typeof(BossChallengeUI).GetMethod("LoadBoss", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(int), typeof(bool) }, null);
+                var preMi = typeof(AssetHelperBridge).GetMethod(nameof(BossChallengeUI_LoadBoss_Prefix), BindingFlags.Static | BindingFlags.Public);
+                if (loadBossMi != null && preMi != null)
+                {
+                    _bcuiBossStatueFi = typeof(BossChallengeUI).GetField("bossStatue", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    _bcuiOnCancelFi = typeof(BossChallengeUI).GetField("OnCancel", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    _bcuiOnLevelSelectedFi = typeof(BossChallengeUI).GetField("OnLevelSelected", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    RuntimeHybridCLRAdapterBuilder.RegisterOrUpdateHookChain("SilksongMobileAPI.HkCoreBossChallenge", loadBossMi, preMi, null, null, 0, "SilksongMobileAPI");
+                    _hkBossChallengeHookInstalled = true;
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo("[HkCoreSceneBridge] Installed BossChallengeUI.LoadBoss(int, bool) bridge for HK1 boss statues.");
+                }
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[HkCoreSceneBridge] BossChallengeUI hook failed: {ex.Message}");
+            }
+        }
+
+        public static bool BossChallengeUI_LoadBoss_Prefix(BossChallengeUI __instance, int level, bool doHideAnim)
+        {
+            try
+            {
+                if (__instance == null) return true;
+                var statue = _bcuiBossStatueFi?.GetValue(__instance) as BossStatue;
+                if (statue == null) return true;
+                BossScene bossScene = statue.UsingDreamVersion ? statue.dreamBossScene : statue.bossScene;
+                if (bossScene == null) return true;
+                string sceneName = bossScene.sceneName;
+                if (level == 0) sceneName = bossScene.Tier1Scene;
+                else if (level == 1) sceneName = bossScene.Tier2Scene;
+                else if (level == 2) sceneName = bossScene.Tier3Scene;
+
+                if (string.IsNullOrEmpty(sceneName) || !IsHkCoreSceneKey(sceneName, out _))
+                    return true;
+
+                EnsureHkCoreAddressablesSceneBridgeRegistered();
+                TrimMemoryForHkTransition(sceneName);
+                StaticVariableList.SetValue("bossSceneToLoad", sceneName, 0);
+                _bcuiOnCancelFi?.SetValue(__instance, null);
+                __instance.Hide(doHideAnim);
+
+                var gm = GameManager.instance;
+                if (gm != null && gm.playerData != null && statue.dreamReturnGate != null)
+                    gm.playerData.bossReturnEntryGate = statue.dreamReturnGate.name;
+
+                int capturedLevel = level;
+                BossStatue capturedStatue = statue;
+                BossSceneController.SetupEvent = (BossSceneController self) =>
+                {
+                    if (self == null) return;
+                    self.BossLevel = capturedLevel;
+                    self.DreamReturnEvent = "DREAM RETURN";
+                    self.OnBossesDead += () =>
+                    {
+                        try
+                        {
+                            string key = capturedStatue.UsingDreamVersion ? capturedStatue.dreamStatueStatePD : capturedStatue.statueStatePD;
+                            var comp = capturedStatue.UsingDreamVersion ? capturedStatue.DreamStatueState : capturedStatue.StatueState;
+                            if (capturedLevel == 0) comp.completedTier1 = true;
+                            else if (capturedLevel == 1) comp.completedTier2 = true;
+                            else if (capturedLevel == 2) comp.completedTier3 = true;
+                            if (capturedStatue.UsingDreamVersion) capturedStatue.DreamStatueState = comp;
+                            else capturedStatue.StatueState = comp;
+                            var pd = GameManager.instance?.playerData;
+                            if (pd != null && !string.IsNullOrEmpty(key))
+                            {
+                                pd.currentBossStatueCompletionKey = key;
+                                pd.bossStatueTargetLevel = capturedLevel;
+                            }
+                        }
+                        catch { }
+                    };
+                    self.OnBossSceneComplete += () => self.DoDreamReturn();
+                };
+
+                var onSelected = _bcuiOnLevelSelectedFi?.GetValue(__instance) as Delegate;
+                onSelected?.DynamicInvoke();
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Started HK1 boss challenge '{sceneName}' (level={level}) via BossChallengeUI bridge.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[HkCoreSceneBridge] BossChallengeUI_LoadBoss_Prefix error: {ex.Message}");
+                return true;
+            }
+        }
+
+        private static bool _directHkSessionActive;
+        private static bool _directHkBenchHookInstalled;
+        private static string _savedBenchScene;
+        private static string _savedBenchMarker;
+        private static int _savedBenchType;
+        private static string _directHkReturnScene;
+        private static string _directHkReturnGate;
+
+        // Active Pantheon queue (1 boss scene in RAM at a time)
+        private static string _activePantheonName;
+        private static string[] _activePantheonScenes;
+        private static int _activePantheonIndex = -1;
+        private static int _activePantheonLevel = 0;
+
+        // Bindings bitmask: 1=Nail, 2=Shell, 4=Charms/Tools, 8=Soul/Silk
+        public static bool HkBindNail;
+        public static bool HkBindShell;
+        public static bool HkBindTools;
+        public static bool HkBindSilk;
+
+        private static BossSequenceController.ChallengeBindings GetSelectedChallengeBindings()
+        {
+            var b = BossSequenceController.ChallengeBindings.None;
+            if (HkBindNail) b |= BossSequenceController.ChallengeBindings.Nail;
+            if (HkBindShell) b |= BossSequenceController.ChallengeBindings.Shell;
+            if (HkBindTools) b |= BossSequenceController.ChallengeBindings.Charms;
+            if (HkBindSilk) b |= BossSequenceController.ChallengeBindings.Soul;
+            return b;
+        }
+
+        private static bool _hkBindingsApplied;
+        private static int _savedBindMaxHealth;
+        private static int _savedBindMaxHealthBase;
+        private static int _savedBindSilkMax;
+        private static int _savedBindNailUpgrades;
+
+        private static void ApplyDirectHkBindingsIfAny()
+        {
+            try
+            {
+                if (_hkBindingsApplied) return;
+                if (!HkBindNail && !HkBindShell && !HkBindTools && !HkBindSilk) return;
+                var pd = PlayerData.instance;
+                if (pd == null) return;
+
+                // Apply bindings directly via Silksong PlayerData (exact PantheonOfPharloom pattern)
+                // NEVER write BossSequenceController.currentData when currentSequence==null, or BoundMaxHealth() throws NRE -> SIGABRT!
+                _savedBindMaxHealth = pd.maxHealth;
+                _savedBindMaxHealthBase = pd.maxHealthBase;
+                _savedBindSilkMax = pd.silkMax;
+                _savedBindNailUpgrades = pd.nailUpgrades;
+                _hkBindingsApplied = true;
+
+                if (HkBindShell)
+                {
+                    pd.maxHealth = 4;
+                    pd.maxHealthBase = 4;
+                    pd.health = Mathf.Min(4, pd.health);
+                    EventRegister.SendEvent("HEALTH UPDATE", null);
+                }
+                if (HkBindSilk)
+                {
+                    pd.silkMax = 9;
+                    pd.silk = Mathf.Min(9, pd.silk);
+                    EventRegister.SendEvent("REGENERATED SILK CHUNK", null);
+                }
+                if (HkBindNail)
+                {
+                    pd.nailUpgrades = 0;
+                }
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Applied native bindings (Nail={HkBindNail}, Shell={HkBindShell}, Tools={HkBindTools}, Silk={HkBindSilk}).");
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[HkCoreSceneBridge] ApplyDirectHkBindings warning: {ex.Message}");
+            }
+        }
+
+        private static void RestoreDirectHkBindings()
+        {
+            try
+            {
+                if (!_hkBindingsApplied) return;
+                _hkBindingsApplied = false;
+                var pd = PlayerData.instance;
+                if (pd != null)
+                {
+                    if (_savedBindMaxHealth > 0)
+                    {
+                        pd.maxHealth = _savedBindMaxHealth;
+                        pd.maxHealthBase = _savedBindMaxHealthBase > 0 ? _savedBindMaxHealthBase : _savedBindMaxHealth;
+                        pd.health = pd.maxHealth;
+                        EventRegister.SendEvent("HEALTH UPDATE", null);
+                    }
+                    if (_savedBindSilkMax > 0)
+                    {
+                        pd.silkMax = _savedBindSilkMax;
+                        EventRegister.SendEvent("REGENERATED SILK CHUNK", null);
+                    }
+                    pd.nailUpgrades = _savedBindNailUpgrades;
+                }
+                SilksongMobileAPIPlugin.LogDiagnosticInfo("[HkCoreSceneBridge] Restored PlayerData stats after HK1 bindings.");
+            }
+            catch { }
+        }
+
+        private static void CapturePlayerBenchIfOutsideHk()
+        {
+            var pd = PlayerData.instance;
+            string curScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name ?? "";
+            if (!string.IsNullOrEmpty(curScene) && !IsHkCoreSceneKey(curScene, out _))
+            {
+                _directHkReturnScene = curScene;
+                _directHkReturnGate = !string.IsNullOrEmpty(GameManager.instance?.entryGateName) ? GameManager.instance.entryGateName : "left1";
+                if (pd != null && !string.IsNullOrEmpty(pd.respawnScene) && !IsHkCoreSceneKey(pd.respawnScene, out _))
+                {
+                    _savedBenchScene = pd.respawnScene;
+                    _savedBenchMarker = pd.respawnMarkerName;
+                    _savedBenchType = pd.respawnType;
+                }
+                else
+                {
+                    _savedBenchScene = curScene;
+                    _savedBenchMarker = _directHkReturnGate;
+                    _savedBenchType = 0;
+                }
+            }
+        }
+
+        private static void RestoreSavedBenchToPlayerData()
+        {
+            var pd = PlayerData.instance;
+            if (pd != null && !string.IsNullOrEmpty(_savedBenchScene))
+            {
+                pd.respawnScene = _savedBenchScene;
+                if (!string.IsNullOrEmpty(_savedBenchMarker))
+                    pd.respawnMarkerName = _savedBenchMarker;
+                pd.respawnType = _savedBenchType;
+                pd.tempRespawnScene = "";
+                pd.tempRespawnMarker = "";
+            }
+        }
+
+        private static float _directHkBenchReturnUntilRealtime;
+
+        public static void EnsureDirectHkBenchReturnHookInstalled()
+        {
+            if (_directHkBenchHookInstalled) return;
+            try
+            {
+                var bstMi = typeof(GameManager).GetMethod("BeginSceneTransition", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(GameManager.SceneLoadInfo) }, null);
+                var preMi = typeof(AssetHelperBridge).GetMethod(nameof(DirectHk_BeginSceneTransition_Prefix), BindingFlags.Static | BindingFlags.Public);
+                if (bstMi != null && preMi != null)
+                {
+                    RuntimeHybridCLRAdapterBuilder.RegisterOrUpdateHookChain("SilksongMobileAPI.DirectHkBenchReturn", bstMi, preMi, null, null, 1000, "SilksongMobileAPI");
+                }
+                var rfrMi = typeof(GameManager).GetMethod("ReadyForRespawn", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(bool) }, null);
+                var rfrPreMi = typeof(AssetHelperBridge).GetMethod(nameof(DirectHk_ReadyForRespawn_Prefix), BindingFlags.Static | BindingFlags.Public);
+                if (rfrMi != null && rfrPreMi != null)
+                {
+                    RuntimeHybridCLRAdapterBuilder.RegisterOrUpdateHookChain("SilksongMobileAPI.DirectHkReadyForRespawn", rfrMi, rfrPreMi, null, null, 1000, "SilksongMobileAPI");
+                }
+                var ddrMi = typeof(BossSceneController).GetMethod("DoDreamReturn", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+                var ddrPreMi = typeof(AssetHelperBridge).GetMethod(nameof(DirectHk_DoDreamReturn_Prefix), BindingFlags.Static | BindingFlags.Public);
+                if (ddrMi != null && ddrPreMi != null)
+                {
+                    RuntimeHybridCLRAdapterBuilder.RegisterOrUpdateHookChain("SilksongMobileAPI.DirectHkDoDreamReturn", ddrMi, ddrPreMi, null, null, 1000, "SilksongMobileAPI");
+                }
+                _directHkBenchHookInstalled = true;
+            }
+            catch { }
+        }
+
+        public static bool DirectHk_ReadyForRespawn_Prefix(GameManager __instance, bool isFirstLevelForPlayer)
+        {
+            try
+            {
+                if (!_directHkSessionActive) return true;
+                RestoreSavedBenchToPlayerData();
+                RestoreDirectHkBindings();
+                _directHkSessionActive = false;
+                _activePantheonScenes = null;
+                _activePantheonIndex = -1;
+                _directHkBenchReturnUntilRealtime = Time.realtimeSinceStartup + 8f;
+                if (__instance != null) __instance.RespawningHero = true;
+                if (SilksongMobileAPIPlugin.Instance != null && !string.IsNullOrEmpty(_savedBenchScene))
+                    SilksongMobileAPIPlugin.Instance.StartCoroutine(EnsureBenchReturnFadeInCoroutine(_savedBenchScene));
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] DirectHk ReadyForRespawn -> recent bench '{_savedBenchScene}' (marker='{_savedBenchMarker}').");
+            }
+            catch { }
+            return true;
+        }
+
+        public static bool DirectHk_BeginSceneTransition_Prefix(GameManager __instance, GameManager.SceneLoadInfo info)
+        {
+            try
+            {
+                bool returning = _directHkSessionActive || Time.realtimeSinceStartup < _directHkBenchReturnUntilRealtime;
+                if (!returning || info == null || string.IsNullOrEmpty(info.SceneName)) return true;
+                // When dying or exiting a direct-launched HK1 boss/pantheon, HkCore/Godhome tries to send Hornet to GG_Atrium or GG_Workshop (which OOM-kills 6 GB phones).
+                // Redirect straight back to the player's recent Silksong bench using native RespawningHero=true + empty EntryGateName (RestBench is a RespawnMarker, not a TransitionPoint!).
+                if (string.Equals(info.SceneName, "GG_Atrium", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(info.SceneName, "GG_Workshop", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(info.SceneName, "GG_Atrium_Roof", StringComparison.OrdinalIgnoreCase))
+                {
+                    string targetBenchScene = !string.IsNullOrEmpty(_savedBenchScene) ? _savedBenchScene : _directHkReturnScene;
+                    if (!string.IsNullOrEmpty(targetBenchScene))
+                    {
+                        RestoreSavedBenchToPlayerData();
+                        RestoreDirectHkBindings();
+                        _directHkSessionActive = false;
+                        _activePantheonScenes = null;
+                        _activePantheonIndex = -1;
+                        _directHkBenchReturnUntilRealtime = Time.realtimeSinceStartup + 8f;
+                        string rScene = targetBenchScene;
+                        string rMarker = _savedBenchMarker;
+                        try
+                        {
+                            if (__instance != null)
+                            {
+                                __instance.GetRespawnInfo(out string gmScene, out string gmMarker);
+                                if (!string.IsNullOrEmpty(gmScene)) rScene = gmScene;
+                                if (!string.IsNullOrEmpty(gmMarker)) rMarker = gmMarker;
+                            }
+                        }
+                        catch { }
+                        if (__instance != null) __instance.RespawningHero = true;
+                        info.SceneName = rScene;
+                        info.EntryGateName = rMarker ?? string.Empty;
+                        info.HeroLeaveDirection = GlobalEnums.GatePosition.unknown;
+                        info.WaitForSceneTransitionCameraFade = true;
+                        info.PreventCameraFadeOut = false;
+                        info.AlwaysUnloadUnusedAssets = true;
+                        if (SilksongMobileAPIPlugin.Instance != null)
+                            SilksongMobileAPIPlugin.Instance.StartCoroutine(EnsureBenchReturnFadeInCoroutine(targetBenchScene));
+                        SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Redirected death/exit from Godhome -> native bench respawn '{targetBenchScene}' (marker='{_savedBenchMarker}', RespawningHero=true).");
+                    }
+                }
+            }
+            catch { }
+            return true;
+        }
+
+        public static bool IsDirectHkSessionActive => _directHkSessionActive;
+        private static int _directHkFightToken;
+
+        public static bool DirectHk_DoDreamReturn_Prefix(BossSceneController __instance)
+        {
+            try
+            {
+                if (!_directHkSessionActive) return true;
+                SilksongMobileAPIPlugin.LogDiagnosticInfo("[HkCoreSceneBridge] Intercepted BossSceneController.DoDreamReturn() -> advancing Pantheon or returning to bench.");
+                AdvanceDirectHkPantheonOrReturnToBench();
+                return false;
+            }
+            catch { }
+            return true;
+        }
+
+        public static void ReturnToSavedBenchFromDirectHk()
+        {
+            try
+            {
+                _directHkFightToken++;
+                RestoreSavedBenchToPlayerData();
+                RestoreDirectHkBindings();
+                _directHkSessionActive = false;
+                _activePantheonScenes = null;
+                _activePantheonIndex = -1;
+                _directHkBenchReturnUntilRealtime = Time.realtimeSinceStartup + 8f;
+                var gm = GameManager.instance;
+                if (gm != null)
+                {
+                    gm.RespawningHero = true;
+                    gm.ReadyForRespawn(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[HkCoreSceneBridge] ReturnToSavedBench ReadyForRespawn fallback: {ex.Message}");
+            }
+        }
+
+        private static void AdvanceDirectHkPantheonOrReturnToBench()
+        {
+            try
+            {
+                if (_activePantheonScenes != null && _activePantheonIndex >= 0 && _activePantheonIndex + 1 < _activePantheonScenes.Length)
+                {
+                    _activePantheonIndex++;
+                    if (_activePantheonIndex == _activePantheonScenes.Length / 2)
+                    {
+                        try
+                        {
+                            var hc = HeroController.instance;
+                            if (hc != null) { hc.MaxHealth(); hc.AddSilk(9, false); }
+                            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Pantheon '{_activePantheonName}' midpoint reached - restored Health & Silk!");
+                        }
+                        catch { }
+                    }
+                    string nextBoss = _activePantheonScenes[_activePantheonIndex];
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Pantheon '{_activePantheonName}' advancing to boss {_activePantheonIndex + 1}/{_activePantheonScenes.Length}: '{nextBoss}'");
+                    LaunchSingleHkBossInternal(nextBoss, _activePantheonLevel, true);
+                    return;
+                }
+                ReturnToSavedBenchFromDirectHk();
+            }
+            catch { ReturnToSavedBenchFromDirectHk(); }
+        }
+
+        private static IEnumerator WaitAndFinishDirectHkAfterBossesDead(int token, string sceneName)
+        {
+            yield return new WaitForSeconds(4.5f);
+            if (_directHkSessionActive && _directHkFightToken == token)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] BossesDead 4.5s safety timer fired in '{sceneName}' -> advancing/returning to bench.");
+                AdvanceDirectHkPantheonOrReturnToBench();
+            }
+        }
+
+        private static IEnumerator EnsureBenchReturnFadeInCoroutine(string benchScene)
+        {
+            float start = Time.realtimeSinceStartup;
+            while (Time.realtimeSinceStartup - start < 15f)
+            {
+                if (string.Equals(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name, benchScene, StringComparison.OrdinalIgnoreCase))
+                    break;
+                yield return new WaitForSeconds(0.25f);
+            }
+            yield return new WaitForSeconds(0.5f);
+            try
+            {
+                var gm = GameManager.instance;
+                if (gm != null) gm.FadeSceneIn();
+                var hc = HeroController.instance;
+                if (hc != null)
+                {
+                    hc.RegainControl();
+                    hc.StartAnimationControl();
+                }
+                var camCtrl = GameCameras.instance?.cameraController;
+                if (camCtrl != null) camCtrl.PositionToHero(true);
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Bench return fade-in & control restored in '{UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}'.");
+            }
+            catch { }
+        }
+
+        private static IEnumerator LogDirectHkBossDiagnosticAfterLoad(int token, string sceneName)
+        {
+            float waitStart = Time.realtimeSinceStartup;
+            while (Time.realtimeSinceStartup - waitStart < 25f)
+            {
+                if (!_directHkSessionActive || _directHkFightToken != token) yield break;
+                if (string.Equals(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name, sceneName, StringComparison.OrdinalIgnoreCase))
+                    break;
+                yield return new WaitForSeconds(0.25f);
+            }
+
+            // Fix #2: Release Hornet control on non-screaming HK1 bosses where Dream Entry relinquishes control and never gets ROAR LOCK END
+            yield return new WaitForSeconds(1.2f);
+            if (!_directHkSessionActive || _directHkFightToken != token) yield break;
+            try
+            {
+                var hc = HeroController.instance;
+                if (hc != null && hc.controlReqlinquished)
+                {
+                    hc.RegainControl();
+                    hc.StartAnimationControl();
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Released Dream Entry control lock in '{sceneName}' (non-screaming boss fix).");
+                }
+            }
+            catch { }
+
+            yield return new WaitForSeconds(1.5f);
+            if (!_directHkSessionActive || _directHkFightToken != token) yield break;
+            // Fix #3: In GG_Grimm, Grimm Scene/FSM stalls at 'Grimm Appear 4' [FINISHED->Battle Start] (confirmed in 2026-11-19_22-58-22/LogOutput.log).
+            if (string.Equals(sceneName, "GG_Grimm", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var allFsms = UnityEngine.Object.FindObjectsOfType<PlayMakerFSM>();
+                    if (allFsms != null)
+                    {
+                        for (int i = 0; i < allFsms.Length; i++)
+                        {
+                            var f = allFsms[i];
+                            if (f != null && f.gameObject.activeInHierarchy &&
+                                string.Equals(f.gameObject.name, "Grimm Scene", StringComparison.OrdinalIgnoreCase) &&
+                                string.Equals(f.ActiveStateName, "Grimm Appear 4", StringComparison.OrdinalIgnoreCase))
+                            {
+                                f.SendEvent("FINISHED");
+                                SilksongMobileAPIPlugin.LogDiagnosticInfo("[HkCoreSceneBridge] Advanced stuck Grimm Scene/FSM ('Grimm Appear 4' -> 'Battle Start')!");
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch { }
+                yield return new WaitForSeconds(0.35f);
+                // Fix #2: Grimm Boss/Control stalls at 'HP Scale' [1->Set 1..5->Set 5] (confirmed in 2026-11-20_08-04-16/LogOutput.log).
+                try
+                {
+                    var allFsms2 = UnityEngine.Object.FindObjectsOfType<PlayMakerFSM>();
+                    if (allFsms2 != null)
+                    {
+                        string tierEv = Mathf.Clamp((PlayerData.instance?.nailUpgrades ?? 0) + 1, 1, 5).ToString();
+                        for (int i = 0; i < allFsms2.Length; i++)
+                        {
+                            var f = allFsms2[i];
+                            if (f != null && f.gameObject.activeInHierarchy &&
+                                string.Equals(f.gameObject.name, "Grimm Boss", StringComparison.OrdinalIgnoreCase) &&
+                                string.Equals(f.FsmName, "Control", StringComparison.OrdinalIgnoreCase) &&
+                                string.Equals(f.ActiveStateName, "HP Scale", StringComparison.OrdinalIgnoreCase))
+                            {
+                                f.SendEvent(tierEv);
+                                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Advanced stuck Grimm Boss/Control ('HP Scale' -> Set {tierEv}) to start Phase 1 + battle audio!");
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            yield return new WaitForSeconds(0.5f);
+            if (!_directHkSessionActive || _directHkFightToken != token) yield break;
+            try
+            {
+                var bsc = BossSceneController.Instance;
+                var sb = new System.Text.StringBuilder();
+                sb.Append($"[HkBossDiag] scene='{sceneName}' active='{UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}' bsc={(bsc != null)}");
+                if (bsc != null) sb.Append($" hasTransIn={bsc.HasTransitionedIn}");
+
+                // Log HealthManager layer / NonBouncer / Invincible state for pogo diagnosis (no guessing!)
+                var hms = UnityEngine.Object.FindObjectsOfType<HealthManager>();
+                if (hms != null)
+                {
+                    for (int i = 0; i < hms.Length && i < 4; i++)
+                    {
+                        var hm = hms[i];
+                        if (hm == null || !hm.gameObject.activeInHierarchy) continue;
+                        var nb = hm.GetComponent<NonBouncer>();
+                        sb.Append($" | HM:{hm.gameObject.name}(layer={hm.gameObject.layer}:{LayerMask.LayerToName(hm.gameObject.layer)},inv={hm.IsInvincible},nb={(nb != null ? nb.active.ToString() : "none")})");
+                    }
+                }
+
+                // Log boss FSM states + outgoing transition events (for Grimm Scene / Grimm Boss diagnosis)
+                var fsms = UnityEngine.Object.FindObjectsOfType<PlayMakerFSM>();
+                int logged = 0;
+                if (fsms != null)
+                {
+                    for (int i = 0; i < fsms.Length && logged < 8; i++)
+                    {
+                        var f = fsms[i];
+                        if (f == null || !f.gameObject.activeInHierarchy) continue;
+                        string fn = f.FsmName ?? "";
+                        string gn = f.gameObject.name ?? "";
+                        bool isGrimmBoss = string.Equals(gn, "Grimm Boss", StringComparison.OrdinalIgnoreCase);
+                        if (isGrimmBoss || (string.Equals(sceneName, "GG_Grimm", StringComparison.OrdinalIgnoreCase) ? false : (gn.IndexOf("Mantis", StringComparison.OrdinalIgnoreCase) >= 0 || gn.IndexOf("HK Prime", StringComparison.OrdinalIgnoreCase) >= 0 || fn == "Control" || fn.IndexOf("Battle", StringComparison.OrdinalIgnoreCase) >= 0)))
+                        {
+                            string evs = "";
+                            var st = f.Fsm?.ActiveState;
+                            if (st?.Transitions != null && st.Transitions.Length > 0)
+                            {
+                                var eList = new List<string>(st.Transitions.Length);
+                                for (int t = 0; t < st.Transitions.Length; t++)
+                                    eList.Add(st.Transitions[t].EventName + "->" + st.Transitions[t].ToState);
+                                evs = " [" + string.Join(",", eList) + "]";
+                            }
+                            sb.Append($" | {gn}/{fn}='{f.ActiveStateName}'{evs}");
+                            logged++;
+                        }
+                    }
+                }
+                if (string.Equals(sceneName, "GG_Grimm", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var sources = UnityEngine.Object.FindObjectsOfType<AudioSource>();
+                        int playing = 0;
+                        sb.Append(" | Audio:");
+                        if (sources != null)
+                        {
+                            for (int i = 0; i < sources.Length && playing < 6; i++)
+                            {
+                                var a = sources[i];
+                                if (a != null && a.isPlaying && a.clip != null)
+                                {
+                                    sb.Append($" {a.gameObject.name}({a.clip.name},v={a.volume:0.00})");
+                                    playing++;
+                                }
+                            }
+                        }
+                        if (playing == 0) sb.Append(" none_playing");
+                    }
+                    catch { }
+                }
+                SilksongMobileAPIPlugin.LogDiagnosticInfo(sb.ToString());
+            }
+            catch { }
+        }
+
+        private static IEnumerator LaunchSingleHkBossCoroutine(string sceneName, int capturedLevel, int fightToken, bool isPantheonStep)
+        {
+            // Await async texture/bundle unload BEFORE allocating the next HK1 boss scene (prevents OOM kill on 6 GB phones like Pure Vessel after Grimm)
+            TrimMemoryForHkTransition(sceneName);
+            yield return Resources.UnloadUnusedAssets();
+            GC.Collect();
+
+            if (!_directHkSessionActive || _directHkFightToken != fightToken) yield break;
+            var gm = GameManager.instance;
+            if (gm == null) yield break;
+
+            StaticVariableList.SetValue("bossSceneToLoad", sceneName, 0);
+            try
+            {
+                var pd = PlayerData.instance;
+                if (pd != null && !string.IsNullOrEmpty(_savedBenchScene))
+                    pd.dreamReturnScene = _savedBenchScene;
+            }
+            catch { }
+
+            BossSceneController.SetupEvent = (BossSceneController self) =>
+            {
+                if (self == null) return;
+                self.BossLevel = capturedLevel;
+                self.DreamReturnEvent = "DREAM RETURN";
+                ApplyDirectHkBindingsIfAny();
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] BossSceneController.SetupEvent bound for '{sceneName}' (level={capturedLevel}).");
+                self.OnBossesDead += () =>
+                {
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] OnBossesDead fired in '{sceneName}' (starting 4.5s return safety timer).");
+                    if (SilksongMobileAPIPlugin.Instance != null)
+                        SilksongMobileAPIPlugin.Instance.StartCoroutine(WaitAndFinishDirectHkAfterBossesDead(fightToken, sceneName));
+                };
+                self.OnBossSceneComplete += () =>
+                {
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] OnBossSceneComplete fired in '{sceneName}'.");
+                    if (_directHkSessionActive && _directHkFightToken == fightToken)
+                        AdvanceDirectHkPantheonOrReturnToBench();
+                };
+            };
+
+            if (SilksongMobileAPIPlugin.Instance != null)
+                SilksongMobileAPIPlugin.Instance.StartCoroutine(LogDirectHkBossDiagnosticAfterLoad(fightToken, sceneName));
+
+            gm.BeginSceneTransition(new GameManager.SceneLoadInfo
+            {
+                SceneName = sceneName,
+                EntryGateName = "door_dreamEnter",
+                HeroLeaveDirection = GlobalEnums.GatePosition.door,
+                EntryDelay = 0f,
+                WaitForSceneTransitionCameraFade = true,
+                PreventCameraFadeOut = false,
+                Visualization = GameManager.SceneLoadVisualizations.Default,
+                AlwaysUnloadUnusedAssets = false
+            });
+        }
+
+        private static void LaunchSingleHkBossInternal(string sceneName, int level, bool isPantheonStep)
+        {
+            var gm = GameManager.instance;
+            if (gm == null) return;
+
+            EnsureHkCoreTypesResolved();
+            EnsureHkCoreAddressablesSceneBridgeRegistered();
+            EnsureDirectHkBenchReturnHookInstalled();
+
+            int capturedLevel = Mathf.Clamp(level, 0, 2);
+            int fightToken = ++_directHkFightToken;
+            _directHkSessionActive = true;
+
+            if (SilksongMobileAPIPlugin.Instance != null)
+                SilksongMobileAPIPlugin.Instance.StartCoroutine(LaunchSingleHkBossCoroutine(sceneName, capturedLevel, fightToken, isPantheonStep));
+        }
+
+        public static string StartDirectHkBossFight(string sceneName, int level)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(sceneName)) return "No boss scene specified.";
+                if (GameManager.instance == null) return "Load into a save file first.";
+                CapturePlayerBenchIfOutsideHk();
+                _activePantheonName = null;
+                _activePantheonScenes = null;
+                _activePantheonIndex = -1;
+                LaunchSingleHkBossInternal(sceneName, level, false);
+                string diffName = level == 0 ? "Attuned" : (level == 1 ? "Ascended" : "Radiant");
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Direct boss launch -> '{sceneName}' ({diffName}, bench return='{_savedBenchScene}').");
+                return $"Loading {sceneName} ({diffName})...";
+            }
+            catch (Exception ex)
+            {
+                return $"Direct boss launch failed: {ex.Message}";
+            }
+        }
+
+        public static string StartDirectHkPantheon(string pantheonName, string[] bossScenes, int level)
+        {
+            try
+            {
+                if (bossScenes == null || bossScenes.Length == 0) return "Empty pantheon.";
+                if (GameManager.instance == null) return "Load into a save file first.";
+                CapturePlayerBenchIfOutsideHk();
+                _activePantheonName = pantheonName;
+                _activePantheonScenes = bossScenes;
+                _activePantheonIndex = 0;
+                _activePantheonLevel = Mathf.Clamp(level, 0, 2);
+                LaunchSingleHkBossInternal(bossScenes[0], _activePantheonLevel, true);
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkCoreSceneBridge] Started '{pantheonName}' ({bossScenes.Length} bosses, 1-at-a-time low-RAM, bench return='{_savedBenchScene}').");
+                return $"Starting {pantheonName} (1/{bossScenes.Length})...";
+            }
+            catch (Exception ex)
+            {
+                return $"Pantheon launch failed: {ex.Message}";
+            }
+        }
+
         public static string TeleportToGodhomeScene(string targetScene)
         {
             try
             {
                 if (string.IsNullOrEmpty(targetScene)) targetScene = "GG_Atrium";
                 EnsureHkCoreTypesResolved();
+                EnsureHkCoreAddressablesSceneBridgeRegistered();
+                TrimMemoryForHkTransition(targetScene);
                 foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
                 {
                     if (asm == null || !(asm.GetName().Name ?? "").StartsWith("HkCore", StringComparison.OrdinalIgnoreCase)) continue;

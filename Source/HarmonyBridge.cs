@@ -2414,6 +2414,13 @@ namespace SilksongMobileAPI
                 int count = 0;
                 foreach (var jf in jsonFiles)
                 {
+                    string jfName = Path.GetFileName(jf) ?? "";
+                    if (jfName.Equals("hk_lang.json", StringComparison.OrdinalIgnoreCase) ||
+                        jfName.Equals("hk_common.json", StringComparison.OrdinalIgnoreCase) ||
+                        jfName.Equals("hk_playerdata.json", StringComparison.OrdinalIgnoreCase) ||
+                        jfName.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) ||
+                        jfName.Equals("hall.json", StringComparison.OrdinalIgnoreCase))
+                        continue;
                     bool isEn = Path.GetFileNameWithoutExtension(jf).Equals("EN", StringComparison.OrdinalIgnoreCase);
                     string text = File.ReadAllText(jf);
                     foreach (Match m in Regex.Matches(text, "\"([^\"]+)\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\""))

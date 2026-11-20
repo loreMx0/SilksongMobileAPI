@@ -723,6 +723,10 @@ namespace SilksongMobileAPI
             {
                 return true;
             }
+            if (declName == "BossSequenceBindingsDisplay" && mName == "CountBindings")
+            {
+                return true;
+            }
             if (targetMethod is MethodInfo retMi && IsMultiSlotValueType(retMi.ReturnType))
             {
                 return true;
@@ -1142,7 +1146,8 @@ namespace SilksongMobileAPI
                     SilksongMobileAPIPlugin.LogDiagnosticInfo($"[AdapterBuilder] Activated managed woven hook for {chain.Key} (mod='{modName}', chainId={chainId}, ret={targetMi.ReturnType?.Name ?? "void"})");
                     return true;
                 }
-                if (CecilRuntimeRewriter.TryBuildDynamicHookPair(chainId, targetMi, out var dynPre, out var dynPost) && dynPre != null && dynPost != null)
+                bool usedPool = PrecompiledHookPool.TryAcquireHookPair(chainId, targetMi, out var dynPre, out var dynPost);
+                if ((usedPool || CecilRuntimeRewriter.TryBuildDynamicHookPair(chainId, targetMi, out dynPre, out dynPost)) && dynPre != null && dynPost != null)
                 {
                     bool omitPostForMultiSlotRet = HasMultiSlotValueTypeParameter(chain.TargetParams) &&
                                                    targetMi.ReturnType != null && targetMi.ReturnType != typeof(void);
@@ -2627,7 +2632,63 @@ namespace SilksongMobileAPI
                     boxedHit = hit;
                 }
             }
+
+            // 4. HK1 Boss Pogo Bounce & Horizontal Recoil Fix (HK1 scenes only)
+            try
+            {
+                if (hc != null && hc.cState != null && Time.unscaledTime - _lastHkPogoBounceTime > 0.08f)
+                {
+                    bool isNailLike = hit.IsNailDamage || hit.AttackType == AttackTypes.Nail;
+                    bool isDownHit = !hc.cState.onGround && (hc.cState.downAttacking || hc.cState.downSpiking || (isNailLike && hit.Direction >= 225f && hit.Direction <= 315f));
+                    bool isUpHit = !isDownHit && isNailLike && (hit.Direction >= 45f && hit.Direction <= 135f);
+                    bool isHorizHit = !isDownHit && !isUpHit && isNailLike;
+                    if (isDownHit || isHorizHit)
+                    {
+                        string activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+                        if (AssetHelperBridge.IsHkCoreSceneKey(activeScene, out _))
+                        {
+                            _lastHkPogoBounceTime = Time.unscaledTime;
+                            if (!_hkPogoMethodsCached)
+                            {
+                                _hkPogoMethodsCached = true;
+                                const BindingFlags pbf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+                                _hcBounceMi = typeof(HeroController).GetMethod("Bounce", pbf, null, Type.EmptyTypes, null);
+                                _hcResetAirMovesMi = typeof(HeroController).GetMethod("ResetAirMoves", pbf, null, Type.EmptyTypes, null);
+                                _hcRecoil3Mi = typeof(HeroController).GetMethod("Recoil", pbf, null, new[] { typeof(bool), typeof(int), typeof(float) }, null);
+                                _hcRecoilLeftMi = typeof(HeroController).GetMethod("RecoilLeft", pbf, null, Type.EmptyTypes, null);
+                                _hcRecoilRightMi = typeof(HeroController).GetMethod("RecoilRight", pbf, null, Type.EmptyTypes, null);
+                            }
+                            if (isDownHit)
+                            {
+                                _hcBounceMi?.Invoke(hc, null);
+                                _hcResetAirMovesMi?.Invoke(hc, null);
+                            }
+                            else if (isHorizHit)
+                            {
+                                bool hitToRight = (hit.Direction < 45f || hit.Direction > 315f) ? true : ((hit.Direction >= 135f && hit.Direction <= 225f) ? false : hc.cState.facingRight);
+                                // Push Hornet opposite the slash direction using Silksong's native HeroController.Recoil(bool isRight, int steps, float velocity)
+                                bool recoilRight = !hitToRight;
+                                if (_hcRecoil3Mi != null)
+                                    _hcRecoil3Mi.Invoke(hc, new object[] { recoilRight, 4, 12f });
+                                else if (recoilRight)
+                                    _hcRecoilRightMi?.Invoke(hc, null);
+                                else
+                                    _hcRecoilLeftMi?.Invoke(hc, null);
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
         }
+
+        private static float _lastHkPogoBounceTime = -1f;
+        private static bool _hkPogoMethodsCached;
+        private static MethodInfo _hcBounceMi;
+        private static MethodInfo _hcResetAirMovesMi;
+        private static MethodInfo _hcRecoil3Mi;
+        private static MethodInfo _hcRecoilLeftMi;
+        private static MethodInfo _hcRecoilRightMi;
 
         public static void InvokeBridgedHealthManagerDieChains(HealthManager hm, HitInstance lastHit)
         {

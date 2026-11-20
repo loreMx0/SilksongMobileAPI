@@ -232,15 +232,15 @@ namespace SilksongMobileAPI.CecilCore
                     {
                         try
                         {
-                            foreach (var oldName in new[] { ".cecil_cache_v2428", ".cecil_cache_v2429", ".cecil_cache_v2430", ".cecil_cache_v2432", ".cecil_cache_v250", ".cecil_cache_v251", ".cecil_cache_v251a", ".cecil_cache_v252", ".cecil_cache_v255", ".cecil_cache_v257", ".cecil_cache_v258", ".cecil_cache_v259", ".cecil_cache_v260", ".cecil_cache_v261", ".cecil_cache_v262", ".cecil_cache_v263", ".cecil_cache_v264", ".cecil_cache_v265", ".cecil_cache_v266", ".cecil_cache_v267", ".cecil_cache_v268", ".cecil_cache_v269", ".cecil_cache_v275", ".cecil_cache_v280", ".cecil_cache_v281", ".cecil_cache_v282", ".cecil_cache_v283", ".cecil_cache_v284", ".cecil_cache_v285", ".cecil_cache_v286", ".cecil_cache_v287", ".cecil_cache_v289", ".cecil_cache_v290", ".cecil_cache_v292", ".cecil_cache_v293", ".cecil_cache_v294", ".cecil_cache_v295", ".cecil_cache_v296", ".cecil_cache_v2961", ".cecil_cache_v2962", ".cecil_cache_v2963", ".cecil_cache_v2964", ".cecil_cache_v2965", ".cecil_cache_v2966", ".cecil_cache_v2967", ".cecil_cache_v2968", ".cecil_cache_v29614", ".cecil_cache_v29615" })
+                            foreach (var oldName in new[] { ".cecil_cache_v2428", ".cecil_cache_v2429", ".cecil_cache_v2430", ".cecil_cache_v2432", ".cecil_cache_v250", ".cecil_cache_v251", ".cecil_cache_v251a", ".cecil_cache_v252", ".cecil_cache_v255", ".cecil_cache_v257", ".cecil_cache_v258", ".cecil_cache_v259", ".cecil_cache_v260", ".cecil_cache_v261", ".cecil_cache_v262", ".cecil_cache_v263", ".cecil_cache_v264", ".cecil_cache_v265", ".cecil_cache_v266", ".cecil_cache_v267", ".cecil_cache_v268", ".cecil_cache_v269", ".cecil_cache_v275", ".cecil_cache_v280", ".cecil_cache_v281", ".cecil_cache_v282", ".cecil_cache_v283", ".cecil_cache_v284", ".cecil_cache_v285", ".cecil_cache_v286", ".cecil_cache_v287", ".cecil_cache_v289", ".cecil_cache_v290", ".cecil_cache_v292", ".cecil_cache_v293", ".cecil_cache_v294", ".cecil_cache_v295", ".cecil_cache_v296", ".cecil_cache_v2961", ".cecil_cache_v2962", ".cecil_cache_v2963", ".cecil_cache_v2964", ".cecil_cache_v2965", ".cecil_cache_v2966", ".cecil_cache_v2967", ".cecil_cache_v2968", ".cecil_cache_v29614", ".cecil_cache_v29615", ".cecil_cache_v29618", ".cecil_cache_v29620", ".cecil_cache_v29625", ".cecil_cache_v29626" })
                             {
-                                if (oldName == ".cecil_cache_v29615") continue;
+                                if (oldName == ".cecil_cache_v29626") continue;
                                 string oldP = Path.Combine(parentDir, oldName);
                                 if (Directory.Exists(oldP)) Directory.Delete(oldP, true);
                             }
                         }
                         catch { }
-                        cacheDir = Path.Combine(parentDir, ".cecil_cache_v29615");
+                        cacheDir = Path.Combine(parentDir, ".cecil_cache_v29626");
                         ulong fnv = ComputeFnv1a64(rawBytes);
                         string modeTag = preAlreadyLoaded ? "rt" : "std";
                         cachePrefix = Path.Combine(cacheDir, $"{shortFileName}_{rawBytes.Length}_{fnv:X16}_{modeTag}");
@@ -4615,8 +4615,56 @@ namespace SilksongMobileAPI.CecilCore
                     //     - Hitches: neutralize Update (stops 50ms Hitch timer)
                     if (modName.IndexOf("Bonemaster", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         td.FullName.StartsWith("BossKit.", StringComparison.Ordinal) ||
-                        td.FullName.StartsWith("Bonemaster.", StringComparison.Ordinal))
+                        td.FullName.StartsWith("Bonemaster.", StringComparison.Ordinal) ||
+                        td.FullName.StartsWith("HkCore.", StringComparison.Ordinal) ||
+                        td.FullName.StartsWith("HkBossLoader.", StringComparison.Ordinal))
                     {
+                        if ((td.FullName.StartsWith("HkCore.", StringComparison.Ordinal) ||
+                             td.FullName.StartsWith("HkBossLoader.", StringComparison.Ordinal)) &&
+                            _assetHelperBridgeType != null)
+                        {
+                            for (int k = 0; k < instrs.Count; k++)
+                            {
+                                if ((instrs[k].OpCode == OpCodes.Callvirt || instrs[k].OpCode == OpCodes.Call) &&
+                                    instrs[k].Operand is MethodReference mr &&
+                                    mr.DeclaringType is GenericInstanceType git &&
+                                    (git.ElementType.FullName == "System.Collections.Generic.IReadOnlyDictionary`2" ||
+                                     git.ElementType.FullName == "System.Collections.Generic.Dictionary`2") &&
+                                    git.GenericArguments.Count == 2 &&
+                                    git.GenericArguments[0].FullName == "System.String" &&
+                                    git.GenericArguments[1] is GenericInstanceType valGit &&
+                                    valGit.ElementType.FullName == "System.ValueTuple`2" &&
+                                    valGit.GenericArguments.Count == 2)
+                                {
+                                    string vt0 = valGit.GenericArguments[0].FullName;
+                                    string vt1 = valGit.GenericArguments[1].FullName;
+                                    string helperName = null;
+                                    if (vt0 == "System.String" && vt1 == "System.String")
+                                    {
+                                        if (mr.Name == "get_Item") helperName = "SafeDictGet_Str_VT2StrStr";
+                                        else if (mr.Name == "get_Keys") helperName = "SafeDictGetKeys_Str_VT2StrStr";
+                                    }
+                                    else if (vt0 == "System.String[]" && vt1 == "System.String[]")
+                                    {
+                                        if (mr.Name == "TryGetValue") helperName = "SafeDictTryGet_Str_VT2StrArrStrArr";
+                                    }
+                                    else if (vt0 == "System.String" && vt1 == "System.Int32")
+                                    {
+                                        if (mr.Name == "get_Item") helperName = "SafeDictGet_Str_VT2StrInt";
+                                        else if (mr.Name == "ContainsKey") helperName = "SafeDictContainsKey_Str_VT2StrInt";
+                                    }
+                                    if (helperName != null)
+                                    {
+                                        var hMi = _assetHelperBridgeType.GetMethod(helperName, BindingFlags.Static | BindingFlags.Public);
+                                        if (hMi != null)
+                                        {
+                                            instrs[k] = il.Create(OpCodes.Call, mod.ImportReference(hMi));
+                                            count++;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         if (td.FullName == "BossKit.World.Shelf" && md.Name == "get_Active" && md.Parameters.Count == 0)
                         {
                             md.Body.Instructions.Clear();
@@ -4777,19 +4825,7 @@ namespace SilksongMobileAPI.CecilCore
                             il.Emit(OpCodes.Ret);
                             count++;
                         }
-                        else if (td.FullName == "HkCore.PlayerDataOverlay" && md.Name == "InHkCode" && md.Parameters.Count == 0 && _assetHelperBridgeType != null)
-                        {
-                            var inHkMi = _assetHelperBridgeType.GetMethod("HkCorePlayerDataInHkCodeBridge", BindingFlags.Static | BindingFlags.Public);
-                            if (inHkMi != null)
-                            {
-                                md.Body.Instructions.Clear();
-                                md.Body.Variables.Clear();
-                                md.Body.ExceptionHandlers.Clear();
-                                il.Emit(OpCodes.Call, mod.ImportReference(inHkMi));
-                                il.Emit(OpCodes.Ret);
-                                count++;
-                            }
-                        }
+                        // HkCore.PlayerDataOverlay::InHkCode runs natively (33B IL2CPP-safe) — never force true for Silksong HUD/Hero in HK scenes.
                         else if (td.FullName == "HkCore.PlayerDataOverlay" && (md.Name == "EnsureSlot" || md.Name == "Set") && _assetHelperBridgeType != null)
                         {
                             var syncMi = _assetHelperBridgeType.GetMethod("HkCoreSyncOverlayToPlayerData", BindingFlags.Static | BindingFlags.Public);
@@ -4832,6 +4868,26 @@ namespace SilksongMobileAPI.CecilCore
                                 il.Emit(OpCodes.Call, mod.ImportReference(gsInitMi));
                                 il.Emit(OpCodes.Ret);
                                 count++;
+                            }
+                        }
+                        else if (td.FullName == "HkCore.HkLanguage" && _assetHelperBridgeType != null)
+                        {
+                            var tcMi = _assetHelperBridgeType.GetMethod("TextInfoToTitleCaseSafe", BindingFlags.Static | BindingFlags.Public);
+                            if (tcMi != null)
+                            {
+                                var tcRef = mod.ImportReference(tcMi);
+                                for (int k = 0; k < instrs.Count; k++)
+                                {
+                                    if ((instrs[k].OpCode == OpCodes.Call || instrs[k].OpCode == OpCodes.Callvirt) &&
+                                        instrs[k].Operand is MethodReference mr &&
+                                        mr.Name == "ToTitleCase" &&
+                                        mr.DeclaringType != null &&
+                                        mr.DeclaringType.FullName == "System.Globalization.TextInfo")
+                                    {
+                                        instrs[k] = il.Create(OpCodes.Call, tcRef);
+                                        count++;
+                                    }
+                                }
                             }
                         }
                         else if (td.FullName == "HkCore.HkScenes/<LoadShaders>d__63" && md.Name == "MoveNext")

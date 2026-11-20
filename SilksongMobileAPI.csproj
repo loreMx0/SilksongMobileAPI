@@ -20,6 +20,7 @@
     <Compile Include="Source/AssetHelperBridge.cs" />
     <Compile Include="Source/PlayMakerHybridCLRBridge.cs" />
     <Compile Include="Source/RuntimeHybridCLRAdapterBuilder.cs" />
+    <Compile Include="Source/PrecompiledHookPool.cs" />
     <Compile Include="Source/HarmonyBridge.cs" />
     <Compile Include="Source/CecilRuntimeRewriter.cs" />
     <Compile Include="Source/SilksongMobileAPIPlugin.cs" />
