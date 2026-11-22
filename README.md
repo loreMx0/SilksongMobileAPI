@@ -33,5 +33,10 @@ adb pull /storage/emulated/0/Android/data/com.game.silksong/files/BepInEx/LogOut
 adb pull /storage/emulated/0/Android/data/com.game.silksong/files/BepInEx/ModLog.log .
 ```
 
+## Pending Bugs to Solve (API)
+- [ ] **P2 softlock at Mantis Lord**
+- [ ] **Mantis Lord and Sisters of Battle not ending properly**
+- [ ] **Adding a button to skip boss in Pantheon**
+
 ## License & Notice
 MIT License — contains only original compatibility bridge code and touch UI logic (no game binaries, proprietary assemblies, or copyrighted assets). *Hollow Knight: Silksong* belongs to Team Cherry; third-party mods belong to their respective authors.
