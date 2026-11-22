@@ -50,6 +50,8 @@ namespace SilksongMobileAPI
         public static ConfigEntry<bool> CfgEnablePatchworkBubbleBridge { get; private set; }
         public static ConfigEntry<bool> CfgEnableJsonAotFix { get; private set; }
         public static ConfigEntry<bool> CfgEnableCrashReporter { get; private set; }
+        public static ConfigEntry<bool> CfgPaleAutomatonParryFreeze { get; private set; }
+        public static ConfigEntry<bool> CfgAllowGodhomeBenchRespawn { get; private set; }
 
         private static readonly HashSet<int> _registeredCircularWindowIds = new HashSet<int>();
         private static readonly HashSet<int> _registeredGodhomeCircularWindowIds = new HashSet<int>();
@@ -311,7 +313,7 @@ namespace SilksongMobileAPI
             GUILayout.Label("<b>=== SSMP Multiplayer Mobile Controls (Direct IP / LAN / Hotspot / Playit.gg) ===</b>");
             if (!HarmonyBridge.IsSSMPLoaded)
             {
-                HarmonyBridge.BootstrapSSMPOnMainMenuIfReady(_instantiatedPcPlugins);
+                // SSMP disabled in IRIS v2.9.8.23 (blocked at runtime)
             }
             string ssmpState = HarmonyBridge.IsSSMPLoaded
                 ? HarmonyBridge.SSMPMobileStatusText
@@ -565,8 +567,8 @@ namespace SilksongMobileAPI
             // Bind API Configuration toggles
             try
             {
-                CfgEnableVerboseApiLogging = Config.Bind("Diagnostics", "EnableVerboseApiLogging", true,
-                    "Enable comprehensive logging across all SilksongMobileAPI subsystems in LogOutput.log and SilksongMobileAPI_PCMods.log.");
+                CfgEnableVerboseApiLogging = Config.Bind("Diagnostics", "EnableVerboseApiLogging", false,
+                    "Enable verbose diagnostic logging across SilksongMobileAPI subsystems (off by default for maximum performance; errors/warnings still log).");
                 CfgEnableCombatSpamFilter = Config.Bind("Performance", "SuppressPerFrameCombatLogSpam", true,
                     "Suppress repetitive per-frame combat log spam during boss fights to prevent disk I/O stutters.");
                 CfgEnableCircularBubbleButton = Config.Bind("UI", "EnableCircularBubbleButton", true,
@@ -577,9 +579,14 @@ namespace SilksongMobileAPI
                     "Apply Hollow Knight Mobile API AotContractResolver & Vector2/Vector3 JSON converters for IL2CPP/HybridCLR safety.");
                 CfgEnableCrashReporter = Config.Bind("Diagnostics", "EnableAndroidCrashReporter", true,
                     "Capture threaded Unity errors and AppDomain unhandled exceptions to Crash.log and SilksongMobileAPI_PCMods.log.");
+                CfgPaleAutomatonParryFreeze = Config.Bind("BossFixes", "PaleAutomatonParryFreeze", true,
+                    "Enable Aeternal Everwatcher-style parry freeze frames (FreezeMomentTypes.NailClashEffect) during the Pale Automaton boss fight.");
+                CfgPaleAutomatonParryFreeze.SettingChanged += (_, __) => AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting();
+                CfgAllowGodhomeBenchRespawn = Config.Bind("BossFixes", "AllowGodhomeBenchRespawn", true,
+                    "Allow resting on Godhome hub benches (GG_Atrium, GG_Workshop, GG_Atrium_Roof) to persist across save & quit.");
 
                 HarmonyBridge.SuppressVerboseCombatLogs = CfgEnableCombatSpamFilter.Value;
-                LogDiagnosticInfo($"[Config] Bound API configs: VerboseLogging={CfgEnableVerboseApiLogging.Value}, CombatSpamFilter={CfgEnableCombatSpamFilter.Value}, CircularBubble={CfgEnableCircularBubbleButton.Value}, PatchworkBubbleBridge={CfgEnablePatchworkBubbleBridge.Value}, JsonAotFix={CfgEnableJsonAotFix.Value}, CrashReporter={CfgEnableCrashReporter.Value}");
+                LogDiagnosticInfo($"[Config] Bound API configs: VerboseLogging={CfgEnableVerboseApiLogging.Value}, CombatSpamFilter={CfgEnableCombatSpamFilter.Value}, CircularBubble={CfgEnableCircularBubbleButton.Value}, PatchworkBubbleBridge={CfgEnablePatchworkBubbleBridge.Value}, JsonAotFix={CfgEnableJsonAotFix.Value}, CrashReporter={CfgEnableCrashReporter.Value}, PaleAutomatonParryFreeze={CfgPaleAutomatonParryFreeze.Value}, AllowGodhomeBenchRespawn={CfgAllowGodhomeBenchRespawn.Value}");
             }
             catch (Exception ex)
             {
@@ -1737,7 +1744,7 @@ namespace SilksongMobileAPI
         }
 
         private static Sprite _godhomeIconSprite;
-        private const string GodhomeKingsBrandIconBase64 = "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";
+        private const string GodhomeKingsBrandIconBase64 = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAepElEQVR42u1de3BU1f3/nHt3NyEhD/KCROBHNAbCQ62CBhNaKjMwCiJS2tp2HFpQQEdb7NiZ9jejHasogVqsFUysSltbq78qQhMGkCBERKIEJCEBEQoF5Jlkd/POZu+9398fued47u7mBQl7FzgzO5vs3sfZ8/me7/v7vQxX2SAi1t33jDG6mtaDXaEAyy8AIPMFxpjRw/mKtDaB59OVRiDsCgFcMX8LMcb0Ho5PMI+nAIAZAIMx1tDD+Sq/l3k8XSOAyw+6YoJoBO5oIhoEIAVAFoCbASQCmABgiHnOOABqF5fWAdQAMAB4ABwA4AVQCeAogDrGWFtv53KNAPp/p6sAdHnXEVESgG8BmAzgVgATASQDiOnnKbQCqAdQAWAfgN0AvmCMuXua4zUCuHT2TvLuIqKxAKYDmAog3wQ8cBjmK/B3Kj3cVt7FJJ0T6rx6AJ8A2AHgQ8bYwQDOwOwuJpidgZflORENB/AAgLkAbg9g4xzsUApgv00r4BVIFDqAzwGsA/AOY+zrAL3BloTA7Ay8uXB3AXjM3O3x0uGaOX8ljL+DTMIjAA7p80aTK7wC4KOA32NcbaZmr4A3F4f/7yKiBURUSdbhJyKNiAyy3zDMufkDPq80f4tL5gg9+SOuJvBDAX8gxMLaEfSeiEGe84FQhHDVigCZ3RORE8CDAJ4AMF6SqawXSpvdBxcRHOxqAKsAvMUY81+VYiFg108jonJpp2hEpNOVN3Tzt/FRTkTTws0NWBh3fQKAZwE8foXt+L5yhD8BeIox1hAObsAuI/gKt+WJaAaAlwFkS3a3gqtryL/7KwA/Z4xtCVyrgR7KZQLfwRgziMhBRKsAbDbB17pxslzpg/9uzVyLzUS0Sl6rK4IDEJFqsvwbAawFkHcV7/recINdAH7GGDvC1y5iOYAE/g8AlJvgX827vjfcIA9AORH9wFw7NeI4QICytxhAoaToqdfw7nbIa7SEMVY0kMohG2DwCwEstpuGT9S5joyxkP/bzFIoYowtGSgiYAMI/msAHr626/uFG/yZMbZoIIhAGWDw/XYEv6OjA36/X/yvaRp8Pp8dCUA11/BhInrNVAiV/owjKAMIvgbAaavtpHcq1O+++y7efPNN8fmbb76Jt956y3KMjYbTXMsBIQKln8BXQ4DvsNtKclm/b98+lJWVic82btyIQ4cOWY6x2XCEIIJ+iSj2B0gqY0wzFT7O9p12W0HDMKCqKvx+P06cOIHW1lb4/X74fD7U1tYiJSUFRARFUUBEdlIIZay4ODBMxZATRng4gOm10kxTb7Ed2b68+xljaGpqwpkzZ1BfX4/m5ma0t7ejsbERx44dQ3NzsyAAmw4uDhYT0WJz7R1hIQDTyaMR0TzTztciQdtvampCXV0ddF2HpnVuHlVV4fV60draamcxICuGGoBCIppnYqBeVgIwEx4NIroewGum3RrO1Kxey3+v1wu32w2n0wnDMEBEiIqKwvnz51FfXx8JBMD9KQaA10wMDKmgZWAJQKq8UQC8jc58e4KNXLuGYcAwQgfTvF4vfD4fYmNj4XA4oOs6nE4nvF4vzp8/36X10NX1wjR4YcsQEwMFALsYpfBiQONJm78HcIcdWb+iKFAU60/jSt2XX36JtrY2pKamIiYmBg6HA4mJiWhvbxeWQOC5qqoGfWYjUXAHgN9z83BACUAK7kwDsNSu5l5bWxvcbreQ8YZhQFEUtLW1Yffu3SAiZGRkIDo6GnFxcbjuuutARNixYweampqgKIrwB3R0dKC2thbt7e12Ng+XEtG0iwkeKX0An3W+URyAIruxfdmJU1paipUrVwrQdF0HYwxerxfV1dUAgPT0dDDGEBUVheHDhwMADh8+LPQAzvJbW1uxYsUKfPjhh3Z1FHFxUGRiQ30RBX0BkGepLAdwg6T42crM03UdGzZsgNvtxuDBg6FpmmD/Bw8exOnTpwEAgwYNEuempaVBURScOnUK+/btE9fSNA0JCQloamrCli1bYBiGHf0DXCG8AcByEyOlXwlAYv1TADwKGwZ4OJs/fPgwNm/ejClTpogdy+V3SUkJzp07h+joaMTExFhkvMvlgsfjQXFxsXAacc4xZcoUlJaW4ujRoxbxYDN9QAfwKBFN6YsoUHoBPmf9UQBekkwR2zl5AGD9+vVgjCE3N1codIwxuN1u1NTUAACioqKQlJQkzk9MTITT2em/OnbsGC5cuADGmLjmnXfeCZ/PJ8SATU1FjslLJla9EgW94QCc9T+Azurbi9I2B5oAFEXByZMn8dJLL2H69OnIysoSSiBjDFu3bsWePXsAANHR0YiPj7cQQFRUFABg7969KC4uFpxB0zRkZmZixowZWLlyJc6fP29Xb6FiYnMrgAd6KwqUPuz+38DaVMF2Tp6XX34ZtbW1Yvfrug6HwwG/34/S0lJ4vV4AwIgRI3DDDTeI89LT05GamgrGGFpaWvDRRx+htbUViqIIIpo8eTJOnjyJoqIiMMbs6izijSt+0xcu0K3sN9/nS0Ubthqa1jmlzz//nIYMGUKTJk2i+vp60nWdOjo6iIhoz549lJmZSaqqEgCaN28e+Xw+8vv9pOs6tbS00Jw5cwgAORwOSktLox07dhARkc/nI8MwqK6ujiZOnEhpaWl06NAhy73ttiTm+3wZwz5zgEjY/UQEIoLP50NBQQE8Hg+mTp2KpKQkaJomWPXu3btx/PhxuFydZXmZmZlwuVwgIhiGgZiYGGRmZgIAXC4XLly4gO3btwsOomkakpOTkZ+fjwsXLuB3v/sdfD6fuH8kcwGll7J/tN3MPpnFr1mzBh988AGGDRuG73//+0IpVFUVp0+fxj//+U8AnZk/DocDI0aMCBIf3C/AzcZ169bhxIkTgoiICPPmzcOwYcPw/vvv429/+5twJdvULBzdF10gJAcwCzkOmlWutqrX8/s7q7B37dpFaWlpBIB++MMfkt/vJ03TxPfFxcXkcDjI5XIRAEpNTaWtW7eKa/Dj1q9fT4mJicQYI5fLRaqq0rvvviuO4yLle9/7HgGgkSNHUlVVlWUuNqtDNEzsHH3WAyTZP82O4HPZe/78ecrNzSUAlJCQIOR2R0cHGYZBLS0tdP/99xMAio6OJgCUm5tLX3/9tbiOrnf+tOPHj9PNN99sOfbuu++mxsZGMgxD6BPbtm2j+Ph4AkDTpk2j+vp6MgxDXMeGRDCtN7pAVwSw0W7Kn2EYpGka+Xw+WrhwoWjZsnjxYrFT/X4/GYZB+/fvp6FDh4pdDYB+9KMfUWtrK2maRoZhCPCam5tp7ty5BIBcLhcxxig5OZl27dpFhmFYuMBDDz0k7vvoo4+SpmniejZUBjf2iQA4uyCidCJqMKnIsBvr/8Mf/kCqqhJjjK6//nqqrq62sGsiol/+8pekKAo5nU5hATz99NOk67qFALjY+NWvfkUASFVVcjqdxBijJUuWCMLj966srKSRI0cSY4ycTie9+uqrdhQFHLcGIkqXse2JABzm+5NSWxZbgb9582ZKTEwkRVHI4XBQYWGhBXzDMOjEiRM0fvx4saO5mPj3v/9tESMysG+//TbFxMRYzhk7diwdO3ask6ea3IWIaPXq1eRwOIgxRklJSVRWVibEj51UJfP9SRnbnghAMRXAcjuxf77w1dXVNGrUKMGC77nnHvJ6vQJ8DmxBQQE5HA5BJABo9OjRdOTIkaDdyv+uqamhrKws4Q9QVZVUVaVly5ZZdAa/309er5fuueceMY+cnBz66quv7MYJNKkZBesxa4gfQERjiMhnF9bPQT1z5gxNmTJFsOmkpCT69NNPxTGcpbe0tNC9995LACzs/6677qJz584JPSLU9fPz8y1iAADNmjWLmpubLSKDiKisrIwSExPF9adOnUpnz54Nur4NRIGPiMbIGPfE/pfahf3zxWxvbxfKF2fPv/71ry07jr9/+OGHlJycTIwxUlWVFEURimJ7ezvpum7R2rnYaGpqoh//+MeCALiOkZycTJs2bbLcgwP8xBNPWOb00EMPkc/ns5NSyDFc2qMYkNh/sV3YP5epBQUFQulijNGECRPI7XZbTDAOysqVK8XuVxRFWAF///vfQ8ppeceuWrWKFEWxnAeAVqxYYbkHJ5q6ujrKzs62zG3lypV2EgUcw+JuxYCk/ScRkUdiH2EHv6SkhOLi4ogxJuT5X/7ylyBAiIjq6upo1qxZFgIAQImJibRt2zbh3w8c/LOtW7cKO59bEADovvvuo/r6esu9+L3XrFkj9AbGGA0ePFgomzYgAo6hx+yrHNoasJvzhy9cVVWVUMw4GHfeeSfV1dVZdj8/fufOnRQbG0uMMWKMCQIYPnw47d69u0tNnRPAzp07adiwYUIM8OvExsbSxx9/bLkXv/e5c+folltuscwxMzOT9u/fbxci6NIppIRIKLjD/DtsedA89aq5uRlPP/00jh49CofDIfL0Hn74YSQnJ4ssIHnU1taipaUFTqfTkigSHx+PhIQEkR8Q5EA3rxMXF4fBgwdbYgUOhwMtLS24cOFC0Dm6riMtLQ0LFiwQc3c6nTh+/DieeuopNDc3gzEW7rRy3kf5jsCEHnn1eFjrtnBm/RARdF2HqqooKirChg0boKqqCP5cf/31uO2224LOUVUV7e3t2LRpU8iMHZfLJa7T3Rg0aBBiY2NDfrd161b4fD6oqmq5PmMMeXl5uO6666Druph/SUkJCgsLRXpZGCOHLABbshAAETEzjywmFJVczqFpGpxOJ7Zu3YrnnnsuKOUrPz8fY8aMCdr9jDE0NDSgsrLSktXLR1xcHKKjo7vkAPKuDiQUDtz+/fvh9XotCSGKosAwDIwfPx7f/e53LZ8BwPPPP4/t27fD6XSGM3IouDsRxZhYM5kD8ANS0fmEjbDE/nkypsfjwbPPPguv1ysWky/4+PHjxWJyIOUU7hMnTnTJAXje38XMCwBOnjyJ5uZmy/V5JrLL5UJOTk4QV/J4PFi+fDmamprCKQp4jkCiibHAPJAAMgHEhpMAFEXBK6+8gp07d1oyczlbTU5OtshsecHLy8vh8XiCWDTQWSzCu4D0lRVzMN1uNyorK4PO54SYkpIi9AJ5zqWlpVi7dq34PWEkgFgT4y4J4JZAGXE5Wb/D4UBVVRVef/310L/CzNSVAZB34r/+9S90dHSEBLm5ublXbWA0TbO0j5FFkM/nw4YNG7psLhUTE2MhPn6eYRh4/fXXRUJpmIiAAjBmoTKChoSDAPiC6bqOwsJCnDx50rJb+A7UNE3IYM5K+Xc7duzAxx9/3GXCZlNTk2Df3c2hsbERHo+ny++3bduGqqoqC9B8Ll6vF36/36JDaJoGVVVRU1OD1atXh+ROl5kAhoRKCeOCaUI4FECe2rV//36UlpaKXP5QbLa8vBzt7e0ifUtRFFRUVGDRokVwu90WBUwGzu12o6GhIaSCKI+zZ8/C7XYHERIvMDlz5gwefPBB7N2715I13NHRgc8++0yIp0ArgYhQUlKC//znPyLPMEyK4AQZ80AOkBwu0w8A6urqcP78eeEHCNxJjDEUFxdj06ZNIt1bBo3XB4SS301NTSgrK7MkiwbqHh0dHdi+fbtICQ/cqXz3njt3DmfOnAmyWrh4kFm8qqqCAE6dOoVTp06FO2cwubsYwI5wxAB4lK2pqYlWrFhhCfdybxx3zfLQK/fKcZ/8Rx99JFK6eHROvgYAGjNmDB0+fDjIO8dduocOHaIxY8YIt658Df7/7bffThUVFeK+RESffvopjR071jJHHoji548YMYJefPFFEYwKQ6CIY7rDEhOQYgCJRFQb7hiAYRhUVVVFTzzxBI0cOVJ+XKtlgdPT02nt2rXk8/mES/bIkSM0bdq0IAC5S1hVVSooKLCkjcnpXsuWLRPRQ/meHMhJkyaJfAJd16mtrY1effVVysjIsMxN/jsrK4uefPJJ2rt3r4hChilKyG9aS0SJAnuJAIaEOwgkR+V0Xac9e/bQ7NmzBSAcFB6hy8nJEUmb7e3tRET0xRdf0NChQ0VEL3AHT58+nTwejwCDE09tba3INZCJhxPEiBEjqKKigoiIWltbyTAMamhooOzsbMuc5Hnee++9dODAAQunCWOIWA4KDeEEoHShKYbHXcWYUKx0XcfEiRPxxhtvYMaMGRZvINesf/KTn2Dw4MEwDAMulwuapmHChAlYuHAhDMOAwxEc+o6Pjw9yCBERnE6npWBU9gwahoEFCxbgtttug9/vR3R0NAzDQFxcHObMmSPmLJup06dPxxtvvIHx48ejo6ND6B42KC+nUFaAbQZjDA6HQwRgUlJSLL5/Dkh6ejoWLFggFp0vvKqqGDNmjEXb57Z3cnIyFi5ciNjYWKH48e8SEhKwZMkSpKSkCI2fWxoxMTG46aabBBHKr0ceeQRpaWlBvQNyc3ORmpqK1tZWOJ1OOBwOO/YWsG/PfiJCbGwsDh06hM2bNwd9P3r0aFHjzxdW1txljxwnjokTJyI3NzeoEST/ftKkSbjlllvE9/x6qampSEtLs9yLvyclJVlcwHxs2bIFR44cQUxMjK27jtmSAPgOPH78OObPn4+KigrR1k32wqmqGvQZNx9DhYq5qzYUAXCi4SFjOTZx9uxZnD171uIb4M4oziXkzxwOBz777DP89Kc/xalTp+zaVCIkATC7iAEiQnx8PPLy8jBo0CD4/X5LTkBNTQ1Onz4NRVFEoaaqqmhoaEBJSYnlOhzguro6+Hy+IBufH+P3+0UJOT+X+wfWrVuHxsZGQVz8Ov/9739FdzGeC6BpGgYNGoS8vDwMHjw4pH8inMsbyGptZQbKFgHXnAsLC4WpxVO9AdD9999PXq+XiEhk7a5fvz7IF8D/zsrKourq6pBZwYZhUHV1tcg+ks/nVsGGDRtE1jERkcfjoZkzZwqzjx+XmppKa9asERaGTZJDQ5uBdnAEdZcOzoEqLS2lnJycIOfQvHnzRL0+EdGXX35JkydPtjhiZD8AT+5sa2sTfgBuQq5YsSLID8Dvdeutt1pMugMHDtC8efOCnD5jx46ljRs3WuoIbFYjsCMoOVSqByizEwFwfwDP4ZPTvWU7f9y4cfT8889TdXU1NTc302OPPWaxzeUdnZ2dLYBsb28X4FdWVtINN9wQtPv5NR5//HHy+Xx04MABeuaZZ4THkBMWY4wyMjIsFUI2KxjlmJbJmAcSwDq7EQBnoZwIfvvb31qSPWWnzdixYykvL48SExODPIgysN/5zncsXOPgwYOWghP5HH6NoUOH0l133SW4kHxvTowFBQUiwdSG1cIc03WhCIAXhDxjl4KQrrKEy8rKKCkpiVRVpaioqKDij+5egaz6j3/8I7344oshRUt3L3nXR0VFkaqqNGzYMCovL7dUDtltCc33Z2TMAwlgqR05gBwwqquro9mzZ1vA4Pn/vJqnJ2Lg38tipDfn8HpBfk+ZWO677z7yeDxinjYcWqgKIUeAe3C/nczBQNPQMAwkJyfjhRdewKRJk1BaWory8nJhkvFQbE+OF27fy2Hnnux0npfIzTnuEs7Ly8PUqVMxZ84cJCYm2vVpIzKm+2XMuQmomM+r/R8ANQBi7EoIsoPn1KlTOHz4MDZs2IC//vWvaGpqsqSQ94aoepsjKF83ISEBCxYswKxZs5CTk4P09HSLP8GOjlXzvRXAOMbYCZIfUC35AmKI6GupmsSWQ+4BxLX5iooKuvvuu0PG4i/1xUu+YJaj7927N6i83KYt4ygAy6/N1P/g8jCpNOx9u+oBgTqBHNcnImpsbKTly5cLKyAwqeNiwQdAQ4YMoeXLl1NjY6O4v9yQwuaDY/m+jHUgAXBF8H/tagl0Rwzyjly/fj2lp6eHNOv68uLnZmRkUElJiV3i+pdiAfxvkAUQggPYsjNYb51GnBA++OADSk5O7rWJGErrVxSFUlNTBfg2dO70a3EoT5X9AkADvnkQQcQMHt/XNA1z5szB7NmzLe3i+3otwzAwa9YszJw5UySh2PDRMb1RABUT0y8CsP6GABhjZHqHPAA+CTwwUobc5p23f+2rdi5HArOzs8XfNtXwezSczPdPAHhM7Z+6CgfzL7fZIUXsUjiBYRj46quvLID2JRmF+x0qKytFYglRRC4Hn/Q2E1ulu3wATi2bAXQgQh/7zgFMSUmx2Pt94QD8PSsry86Pk+3NUE0sN/eKq5NN28T11U/A08R51m5fTEJ+7B133EHnzp0TCmYEjh7bxIXSaLgYeC9SxQB37WZlZWHVqlWIj48PmSLW1bmGYSAhIQHPPfcchg4detGKpI3Y/3uh2H9XHMDWrWIvpsZg2bJlIQM4oaKF/Bi5OWSE2fxyBlDfW8UG+AQ2RqoY4Gxb13Vyu92WxpE9sf6ZM2dSXV2dpfNoBLP/vjWLvlKcQoF5BNXV1TR69Ogu9QH+WXZ2NlVWVlrOjdDRq3bxShdaMO8hUwbgS4S5a9il6gOapmHcuHFYtGiReFRMqLoAl8uFJUuW4KabbhKOnwgdvCvYlwDKyOwB1WsCkJRBDUABvmkxEnFDLgyZO3cusrOzg5Q6rjTm5ORg7ty5lgqgCB28xU+BiWGXOHdHAPyZ9O8AOIxvnkUTkUQAAMOGDRNlZoEVPowx5OfnIyMj46J8Bzbb/YqJ2TsmhkafCcDUlhljzAfghUjnArquIyoqCpmZmUEFI/yYUaNGiQ5kEWr2ybv/BRM7Jrt++8IBrhguIHcAqampEeCT9Ng3wzBQVVUFv98f1GbmSt39PRLAlcAFSCr0LCkpwbZt20J2GmOMYdOmTSguLha7PwJ9/33a/b1dQGa6h6OIaK/d08W6MgNLSkpE44hQSSI8zXvo0KFBzwaIILOPTIyiuEu/x8BZL+SnzAWWRpp7WJbzmqZ1y9p52JebfxGmCHJMlvbb7u/CObQ60ryDPJCzdu1aSkhIsFQWwcz+YYxRYmIi/eMf/7AElCLM67e6z16/ixAFcUR0NJI8hLJL9xe/+IUl01d+CMXSpUsF+BEU/eMev6MmNr1i/b0WASFEQROAxZHmHWSMobW1VfTvD/W91+tFc3NzpJmA3Ou32MSmT6xf6eMi6kSkMsa2AXgJnZVFmu2Foynb29racOjQIfE/NwN5A8jjx4/D5/NFUvaPZmLwEmNsm4mNPtCLyYhINV8RkzQiN5S88cYbLU8GgxkE+uSTTyJJ/svJHhwPdrl2FM8aup6I3KYcsrXQlGsH1q1bJ573pygKpaWl0fr16yMp/s/X221i0PNDIQeACLhVME8qPrD1yvGOI5qm0fz584UV8Nhjj5FhGHat6w+V6MEdFPMuVetXLkGp0onIwRh7D8ASUxbpdhaYXO6rqopJkyZBURTEx8cjPz9fRP8iQAHUzbVewhh7z8RAv+wEYBKBZk6gCECROTG/nS0BbgF8+9vfxogRIzBq1Cjk5uYKArH58JtrXMQYKzLX/pKUcEd/UKQ5kSWmHHpY0k5tSQREhOzsbPH8oYyMjKBOnzbV+J0A/myudb9w3H75xab2qZhi4TU7EwFJj3MpKyuDy+VCXl6e3fP++Vr+mTG2yJT5Rn+4elk/LmwoIvCbVHttXBrbdw4E+P1KAN0QgQ6bVhjJzaRtrPCpAwV+vxNACCIoNN3Gunkv5dqG7rV7l0zwi0yZ3+/gDwgBhCCCxQAKAyj62uh518M09YoGCvwBIwDZWWQSwQ8AvAogyc4Wgo2UPTeARxhj/zfQ/v0BV3slIrgRwFoAefgminhNJHzD8vl67ALwM8bYkcsR3BlwACSP4REAU9EZRVTMl3YNe2jSerwEYKoJvmPAI3u4jH0ASepLR0QzALwMIPsq5gby7/4KwM8ZY1sC12qgx2VbdLMRJTPZ2hYAtwP4k0T9OiK08OQigNel3/0nALczxrbwkO7lAj9sQ45emQWo5QFx7ogtRu0hhCsnGpTzws3ANbmcg4WRCGRT0QngQQBPABgvmUNXgu9AtukBoBrAKgBvMcb8A2niRSI3cBHRAiI6EBD/1iKsSUWoOR8wf5sr3LvejkTAuiCEysA6DxsTAwc9sJqkMhTwly19y64ioCexIO2QuwA8ZpqQ8QHmExcR4fodJLF42bnVCGAHgFcAfBTwe2zF7pldOYJMCOZnwwE8AGCuaUGoAXKWp0fLr/4GW34pAfqJDuBzAOsAvMMY+zqA1dtSzts6A4ITAjobOBnS52MBTDe5Qj6A5C6ULyPE7+yxIjoAdIQAm496dHbg3AHgQ8bYQdnvYd7X1gpexBS/mcSgAtDlBSWiJADfAjAZwK0AJpoEEdPPU2g1Aa8AsA/AbgBfMMbcPc3RziMi22CYu0sxd5cR8N0gACkAsgDcDCARwAQAQ8xzxqHriKSOziemGOjsmXwAgBdAJYCjAOoYY229ncs1Ari8YoKZokLv4fgEfNMJnUmsnrPrhl6YrbxPQsTb7xFPAF0QRKAiyBU39LRLpQKLUOfTleawueIIoJcE0vWCXGUeuf8H2QptulWE61UAAAAASUVORK5CYII=";
 
         private static Sprite GetOrCreateGodhomeIconSprite()
         {
@@ -1832,7 +1839,7 @@ namespace SilksongMobileAPI
                     floatingWindow.RegisterButton(new CircularButtonItem(
                         icon: GetOrCreateGodhomeIconSprite(),
                         text: "",
-                        buttonColor: new Color(0.96f, 0.96f, 0.96f, 0.96f),
+                        buttonColor: Color.white,
                         onClickCallback: () =>
                         {
                             try { floatingWindow.HideButtonRing(); } catch { }
@@ -2026,18 +2033,18 @@ namespace SilksongMobileAPI
             var pImg = _uGuiModConsolePanelGo.GetComponent<UnityEngine.UI.Image>();
             pImg.color = new Color(0.08f, 0.07f, 0.10f, 0.96f);
 
-            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.6)", new Vector2(-120f, 392f), new Vector2(1100f, 44f), 24, new Color(0.96f, 0.86f, 0.62f, 1f), TextAnchor.MiddleLeft);
+            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.23)", new Vector2(-120f, 392f), new Vector2(1100f, 44f), 24, new Color(0.96f, 0.86f, 0.62f, 1f), TextAnchor.MiddleLeft);
 
             CreateUGuiButton(_uGuiModConsolePanelGo.transform, "CloseBtn", "Close [X]", new Vector2(630f, 392f), new Vector2(150f, 44f), new Color(0.50f, 0.14f, 0.18f, 0.96f), Color.white, 18, () => SetShowModPanel(false));
 
-            // Top Tab Bar (7 tabs including Debug tab for Android uGUI Profiler & Inventory diagnostics)
-            string[] tabs = new[] { "Hotkeys", "Keys09AZ", "Configs", "Installed", "Profile", "SSMP", "Debug" };
-            string[] tabLabels = new[] { "F-Keys & Actions", "0-9 & A-Z Keys", "Mod Configs", "Installed Mods", "Profile", "SSMP", "Debug" };
+            // Top Tab Bar (6 tabs; SSMP tab removed per IRIS v2.9.8.23 policy)
+            string[] tabs = new[] { "Hotkeys", "Keys09AZ", "Configs", "Installed", "Profile", "Debug" };
+            string[] tabLabels = new[] { "F-Keys & Actions", "0-9 & A-Z Keys", "Mod Configs", "Installed Mods", "Profile", "Debug" };
             for (int i = 0; i < tabs.Length; i++)
             {
                 string tabId = tabs[i];
-                float x = -594f + i * 198f;
-                CreateUGuiButton(_uGuiModConsolePanelGo.transform, "Tab_" + tabId, tabLabels[i], new Vector2(x, 330f), new Vector2(190f, 48f), new Color(0.22f, 0.14f, 0.22f, 0.95f), new Color(0.98f, 0.92f, 0.80f, 1f), 15, () =>
+                float x = -570f + i * 228f;
+                CreateUGuiButton(_uGuiModConsolePanelGo.transform, "Tab_" + tabId, tabLabels[i], new Vector2(x, 330f), new Vector2(218f, 48f), new Color(0.22f, 0.14f, 0.22f, 0.95f), new Color(0.98f, 0.92f, 0.80f, 1f), 16, () =>
                 {
                     _selectedModTab = tabId;
                     _uGuiPageIndex = 0;
@@ -2393,30 +2400,7 @@ namespace SilksongMobileAPI
             {
                 BuildUGuiDebugTabContent();
             }
-            else if (_selectedModTab == "SSMP")
-            {
-                if (!HarmonyBridge.IsSSMPLoaded)
-                {
-                    HarmonyBridge.BootstrapSSMPOnMainMenuIfReady(_instantiatedPcPlugins);
-                }
-                string ssmpState = HarmonyBridge.IsSSMPLoaded ? HarmonyBridge.SSMPMobileStatusText : "SSMP not yet active";
-                CreateUGuiLabel(_uGuiModConsoleContentRoot, $"Status: {ssmpState} | {HarmonyBridge.SSMPMobileServerIp}:{HarmonyBridge.SSMPMobileServerPort} ({HarmonyBridge.SSMPMobileUsername})", new Vector2(0f, 220f), new Vector2(1320f, 50f), 19, Color.white, TextAnchor.MiddleCenter);
-                CreateUGuiButton(_uGuiModConsoleContentRoot, "SSMP_DirectJoin", $"Direct Connect ({HarmonyBridge.SSMPMobileServerIp}:{HarmonyBridge.SSMPMobileServerPort})", new Vector2(0f, 130f), new Vector2(680f, 56f), new Color(0.16f, 0.38f, 0.24f, 0.96f), Color.white, 20, () =>
-                {
-                    HarmonyBridge.SSMPMobileDirectConnect(HarmonyBridge.SSMPMobileServerIp, HarmonyBridge.SSMPMobileServerPort, HarmonyBridge.SSMPMobileUsername);
-                    if (_uGuiModConsoleStatusText != null) _uGuiModConsoleStatusText.text = HarmonyBridge.SSMPMobileStatusText;
-                });
-                CreateUGuiButton(_uGuiModConsoleContentRoot, "SSMP_Host", $"Host Server (Port {HarmonyBridge.SSMPMobileServerPort})", new Vector2(0f, 50f), new Vector2(680f, 56f), new Color(0.20f, 0.32f, 0.46f, 0.96f), Color.white, 20, () =>
-                {
-                    HarmonyBridge.SSMPMobileStartHost(HarmonyBridge.SSMPMobileServerPort, HarmonyBridge.SSMPMobileUsername);
-                    if (_uGuiModConsoleStatusText != null) _uGuiModConsoleStatusText.text = HarmonyBridge.SSMPMobileStatusText;
-                });
-                CreateUGuiButton(_uGuiModConsoleContentRoot, "SSMP_Disconnect", "Disconnect SSMP", new Vector2(0f, -30f), new Vector2(680f, 56f), new Color(0.45f, 0.16f, 0.20f, 0.96f), Color.white, 20, () =>
-                {
-                    HarmonyBridge.SSMPMobileDisconnect();
-                    if (_uGuiModConsoleStatusText != null) _uGuiModConsoleStatusText.text = HarmonyBridge.SSMPMobileStatusText;
-                });
-            }
+
         }
 
         private TouchScreenKeyboard _profileNameKeyboard;
@@ -3127,7 +3111,6 @@ namespace SilksongMobileAPI
                 _nextI18nSyncTime = Time.unscaledTime + 4.0f;
                 HarmonyBridge.SyncModLocalizationIntoGame();
                 HarmonyBridge.EnsureHeroConfigCanPlayNeedolin(HeroController.SilentInstance);
-                HarmonyBridge.EnsureCrossStitchMadnessAndEternalWeaverRuntime(HeroController.SilentInstance);
                 if (!_autoSyncedGameplayModSkills && PlayerData.HasInstance && PlayerData.instance != null && hc != null)
                 {
                     _autoSyncedGameplayModSkills = true;
@@ -3919,7 +3902,8 @@ namespace SilksongMobileAPI
             {
                 LogDiagnosticWarn($"[Profile] Startup profile init notice: {exProf.Message}");
             }
-            LogDiagnosticInfo($"IRIS v2.9.7.1 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
+            LogDiagnosticInfo($"IRIS v2.9.8.23 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
+            AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting();
                 try { AssetHelperBridge.EnsureHkCoreAddressablesSceneBridgeRegistered(); } catch { }
                 try { Instance?.SetupButtons(); } catch { }
             FlushAsyncDiagnosticLogs();
@@ -4065,26 +4049,88 @@ namespace SilksongMobileAPI
             "Stitchwork",
             "SilksongSkinCreators-Stitchwork",
             "StitchworkWiki",
-            "SilksongSkinCreators-StitchworkWiki"
+            "SilksongSkinCreators-StitchworkWiki",
+            "Exuvia",
+            "Sova89-Exuvia",
+            "CustomSprite",
+            "Yukikaco-CustomSprite",
+            "HornetCloakColor",
+            "Michael4d45-HornetCloakColor",
+            "GhostOfPharloom_for_Customizer",
+            "GhostOfPharloom_for_Patchwork",
+            "Horent_is_Link",
+            "wii_hornet",
+            "VoidHornet",
+            "SteelMaskTint",
+            "Teto_Voice_for_Stitchwork",
+            "KnightBlueHUD_for_Patchwork",
+            "SSMP",
+            "SSMP-SSMP",
+            "BasicEnemySync",
+            "Brothergaming52-BasicEnemySync",
+            "BasicItemSync",
+            "BobbyTheCatfish-BasicItemSync",
+            "Prop_Hunt",
+            "PropHuntMod",
+            "BobbyTheCatfish-Prop_Hunt",
+            "SSMPVoiceChat",
+            "BobbyTheCatfish-SSMPVoiceChat",
+            "SSMPEnemyHealthSync",
+            "memeem27-SSMPEnemyHealthSync",
+            "SSMPEnemySync",
+            "BasicEnemySyncAddonsFix",
+            "Riggola-BasicEnemySyncAddonsFix",
+            "BasicEnemySyncCocoonsReviveFix",
+            "Riggola-BasicEnemySyncCocoonsReviveFix"
         };
+
+        public static bool IsHkCoreOrBossLoaderIdentifier(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return false;
+            return id.IndexOf("HkCore", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   id.IndexOf("HkBossLoader", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   id.IndexOf("SsBossLoader", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
 
         public static bool IsStitchworkSkinOrAssetPackName(string id)
         {
             if (string.IsNullOrEmpty(id)) return false;
-            if (id.IndexOf("StitchworkWiki", StringComparison.OrdinalIgnoreCase) >= 0)
-                return false;
-            if (id.IndexOf("for_Stitchwork", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                id.IndexOf("for-Stitchwork", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                id.IndexOf("Stitchwork_Skin", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                id.IndexOf("StitchworkSkin", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (id.IndexOf("Stitchwork", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("for_Patchwork", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("for_Customizer", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("HornetSkin", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("Hornet_Skin", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("Custom_Skin", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("CustomSkin", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("_skin_", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("Recolour", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("Recolor", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("CloakColor", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("VoidHornet", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("Exuvia", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                id.IndexOf("CustomSprite", StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
             return false;
+        }
+
+        public static bool IsSsmpOrAddonIdentifier(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return false;
+            return string.Equals(id, "SSMP", StringComparison.OrdinalIgnoreCase) ||
+                   id.StartsWith("SSMP", StringComparison.OrdinalIgnoreCase) ||
+                   id.IndexOf("-SSMP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   id.IndexOf("BasicEnemySync", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   id.IndexOf("BasicItemSync", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   id.IndexOf("Prop_Hunt", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   id.IndexOf("PropHunt", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         public static bool IsExcludedModIdentifier(string id)
         {
             if (string.IsNullOrEmpty(id)) return false;
-            if (IsStitchworkSkinOrAssetPackName(id)) return false;
+            // HkCore & HkBossLoader MUST keep working at runtime if present in BepInEx/plugins/
+            if (IsHkCoreOrBossLoaderIdentifier(id)) return false;
+            if (IsStitchworkSkinOrAssetPackName(id) || IsSsmpOrAddonIdentifier(id)) return true;
             string clean = System.Text.RegularExpressions.Regex.Replace(id.Trim(), @"-\d+\.\d+.*$", "");
             if (_excludedArchitectOrPortingNames.Contains(id) || _excludedArchitectOrPortingNames.Contains(clean))
                 return true;
@@ -4103,7 +4149,14 @@ namespace SilksongMobileAPI
             try
             {
                 string dirName = Path.GetFileName(modDir) ?? "";
+                // HkCore & HkBossLoader MUST keep working at runtime if present in BepInEx/plugins/
+                if (IsHkCoreOrBossLoaderIdentifier(dirName))
+                {
+                    return false;
+                }
                 if (IsExcludedModIdentifier(dirName) ||
+                    IsStitchworkSkinOrAssetPackName(dirName) ||
+                    IsSsmpOrAddonIdentifier(dirName) ||
                     string.Equals(dirName, "Architect", StringComparison.OrdinalIgnoreCase) ||
                     dirName.IndexOf("-Architect-", StringComparison.OrdinalIgnoreCase) >= 0 ||
                     dirName.EndsWith("-Architect", StringComparison.OrdinalIgnoreCase) ||
@@ -4118,7 +4171,10 @@ namespace SilksongMobileAPI
                 {
                     string json = File.ReadAllText(manifestPath);
                     if (json.IndexOf("cometcake575-Architect", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        json.IndexOf("com.cometcake575.architect", StringComparison.OrdinalIgnoreCase) >= 0)
+                        json.IndexOf("com.cometcake575.architect", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        json.IndexOf("SSMP-SSMP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        json.IndexOf("Brothergaming52-BasicEnemySync", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        json.IndexOf("SilksongSkinCreators-Stitchwork", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         return true;
                     }
@@ -4127,7 +4183,11 @@ namespace SilksongMobileAPI
                     {
                         int closeBracket = json.IndexOf(']', depIdx);
                         string depSlice = closeBracket > depIdx ? json.Substring(depIdx, closeBracket - depIdx) : json.Substring(depIdx);
-                        if (depSlice.IndexOf("Architect", StringComparison.OrdinalIgnoreCase) >= 0)
+                        if (depSlice.IndexOf("Architect", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            depSlice.IndexOf("Stitchwork", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            depSlice.IndexOf("Patchwork", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            depSlice.IndexOf("SSMP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            depSlice.IndexOf("BasicEnemySync", StringComparison.OrdinalIgnoreCase) >= 0)
                         {
                             return true;
                         }
@@ -4138,7 +4198,10 @@ namespace SilksongMobileAPI
                 {
                     string fn = Path.GetFileNameWithoutExtension(dllPath) ?? "";
                     if (string.Equals(fn, "Architect", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(fn, "BuildYourOwnBench", StringComparison.OrdinalIgnoreCase))
+                        string.Equals(fn, "BuildYourOwnBench", StringComparison.OrdinalIgnoreCase) ||
+                        IsExcludedModIdentifier(fn) ||
+                        IsStitchworkSkinOrAssetPackName(fn) ||
+                        IsSsmpOrAddonIdentifier(fn))
                     {
                         return true;
                     }
@@ -4304,7 +4367,7 @@ namespace SilksongMobileAPI
                 }
             }
 
-            HarmonyBridge.RegisterSSMPAddonsFromAssembly(asm, foundAnyPlugin);
+            // SSMP addon auto-registration disabled in IRIS v2.9.8.23
         }
 
         public static void DeactivateLoadedModRuntime(string modName, string modDirectoryPath)
@@ -4515,7 +4578,7 @@ namespace SilksongMobileAPI
 
                 _panelRect.x = Mathf.Clamp(_panelRect.x, 16f, Mathf.Max(16f, vWidth - _panelRect.width - 16f));
                 _panelRect.y = Mathf.Clamp(_panelRect.y, 16f, Mathf.Max(16f, vHeight - _panelRect.height - 16f));
-                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.6)", _styleWindow);
+                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.23)", _styleWindow);
             }
             catch (System.Exception __apiEx_46) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("SilksongMobileAPIPlugin", "L2463", __apiEx_46); }
             finally
@@ -4739,12 +4802,6 @@ namespace SilksongMobileAPI
             }
             GUILayout.Space(6f);
 
-            if (GUILayout.Button(_selectedModTab == "SSMP" ? "> SSMP Multiplayer" : "  SSMP Multiplayer", _selectedModTab == "SSMP" ? _styleTabBtnActive : _styleTabBtn, GUILayout.Height(52f)))
-            {
-                _selectedModTab = "SSMP";
-            }
-            GUILayout.Space(6f);
-
             if (GUILayout.Button(_selectedModTab == "Logs" ? "> Diagnostics" : "  Logs & Status", _selectedModTab == "Logs" ? _styleTabBtnActive : _styleTabBtn, GUILayout.Height(52f)))
             {
                 _selectedModTab = "Logs";
@@ -4775,10 +4832,6 @@ namespace SilksongMobileAPI
             else if (_selectedModTab == "Online")
             {
                 DrawOnlineStoreTab();
-            }
-            else if (_selectedModTab == "SSMP")
-            {
-                DrawSSMPMultiplayerControlsBox();
             }
             else if (_selectedModTab == "Hotkeys")
             {
@@ -4844,10 +4897,7 @@ namespace SilksongMobileAPI
                     GUILayout.Label(_unlockStatusMessage);
                 }
 
-                if (HarmonyBridge.IsSSMPLoaded || _loadedModNames.Any(n => n.IndexOf("SSMP", StringComparison.OrdinalIgnoreCase) >= 0))
-                {
-                    DrawSSMPMultiplayerControlsBox();
-                }
+                // SSMP UI controls removed in IRIS v2.9.8.23
 
                 GUILayout.Space(6f);
                 GUILayout.BeginVertical("box");
@@ -5430,6 +5480,7 @@ namespace SilksongMobileAPI
 
         public static void LogDiagnosticInfo(string msg)
         {
+            if (CfgEnableVerboseApiLogging != null && !CfgEnableVerboseApiLogging.Value) return;
             StaticLogger?.LogInfo(msg);
             AppendToDiagnosticFile("INFO", msg);
         }
@@ -5681,6 +5732,12 @@ namespace SilksongMobileAPI
         private UnityEngine.UI.Text _bottomStatusTextComp;
         private UnityEngine.UI.Text _bottomStepBadgeTextComp;
 
+        private GameObject _disclaimerRoot;
+        private CanvasGroup _disclaimerGroup;
+        private RectTransform _disclaimerFillBarRect;
+        private UnityEngine.UI.Text _disclaimerCountdownText;
+        private bool _showingDisclaimer;
+
         private float _barMaxWidth = 1920f;
         private int _lastDisplayedPct = -1;
         private string _lastStatusStr = "";
@@ -5761,6 +5818,9 @@ namespace SilksongMobileAPI
                 {
                     Instance.StopAllCoroutines();
                     Instance._fadingOut = false;
+                    Instance._showingDisclaimer = false;
+                    if (Instance._disclaimerRoot != null)
+                        Instance._disclaimerRoot.SetActive(false);
                     if (Instance._canvasGroup != null)
                         Instance._canvasGroup.alpha = 1f;
                     Instance.gameObject.SetActive(true);
@@ -5867,14 +5927,14 @@ namespace SilksongMobileAPI
             var topStrip = CreatePanel(rootRect, "TopLetterboxStrip", new Vector2(0f, 504f), new Vector2(1920f, 72f), colStripBg).rectTransform;
             CreatePanel(topStrip, "TopStripBorder", new Vector2(0f, -36f), new Vector2(1920f, 1.5f), colBorder);
 
-            // Left Square Indicator + "IRIS v2.9.6"
+            // Left Square Indicator + "IRIS v2.9.8.23"
             CreatePanel(topStrip, "TopSquareDot", new Vector2(-896f, 0f), new Vector2(10f, 10f), colPrimary);
             _topVersionTextComp = CreateLabel(
                 topStrip,
                 "TopVersionLabel",
                 new Vector2(-420f, 0f),
                 new Vector2(920f, 40f),
-                "IRIS v2.9.6",
+                "IRIS v2.9.8.23",
                 20,
                 FontStyle.Bold,
                 colPrimary,
@@ -5945,13 +6005,119 @@ namespace SilksongMobileAPI
                 "BottomStepBadgeText",
                 Vector2.zero,
                 new Vector2(176f, 32f),
-                "IRIS v2.9.6",
+                "IRIS v2.9.8.23",
                 15,
                 FontStyle.Bold,
                 colDim,
                 TextAnchor.MiddleCenter);
 
+            if (!IsOperationMode)
+            {
+                BuildDisclaimerOverlay(rootRect);
+            }
+
             RefreshStealthRibbonTexts();
+        }
+
+        private void BuildDisclaimerOverlay(RectTransform rootRect)
+        {
+            Color colBackdrop = new Color32(6, 6, 8, 255);      // #060608
+            Color colCardBg   = new Color32(13, 13, 17, 255);   // #0D0D11
+            Color colBorder   = new Color32(46, 46, 60, 255);   // #2E2E3C
+            Color colTrack    = new Color32(23, 23, 31, 255);   // #17171F
+            Color colGold     = new Color32(242, 216, 155, 255);// #F2D89B
+            Color colPrimary  = new Color32(236, 236, 239, 255);// #ECECEF
+            Color colMuted    = new Color32(154, 154, 168, 255);// #9A9AA8
+
+            _disclaimerRoot = new GameObject("DisclaimerOverlayRoot", typeof(RectTransform), typeof(CanvasGroup));
+            _disclaimerRoot.transform.SetParent(rootRect, false);
+            var drt = _disclaimerRoot.GetComponent<RectTransform>();
+            drt.anchorMin = Vector2.zero;
+            drt.anchorMax = Vector2.one;
+            drt.offsetMin = Vector2.zero;
+            drt.offsetMax = Vector2.zero;
+
+            _disclaimerGroup = _disclaimerRoot.GetComponent<CanvasGroup>();
+            _disclaimerGroup.alpha = 1f;
+            _disclaimerGroup.blocksRaycasts = true;
+            _disclaimerGroup.interactable = false;
+
+            // Fullscreen flat dark backdrop matching Stealth Cinema Ribbon
+            CreatePanel(drt, "DisclaimerBackdrop", Vector2.zero, new Vector2(2400f, 1400f), colBackdrop);
+
+            // Outer hairline border frame + inner dark card (1580 x 720)
+            CreatePanel(drt, "DisclaimerCardBorder", Vector2.zero, new Vector2(1584f, 724f), colBorder);
+            var cardRt = CreatePanel(drt, "DisclaimerCardBg", Vector2.zero, new Vector2(1580f, 720f), colCardBg).rectTransform;
+
+            // Top gold accent rule
+            CreatePanel(cardRt, "DisclaimerTopAccent", new Vector2(0f, 358f), new Vector2(1580f, 4f), colGold);
+
+            // Centered DISCLAIMER header
+            CreateLabel(
+                cardRt,
+                "DisclaimerTitle",
+                new Vector2(0f, 290f),
+                new Vector2(1440f, 58f),
+                "DISCLAIMER",
+                38,
+                FontStyle.Bold,
+                colGold,
+                TextAnchor.MiddleCenter);
+
+            // Subtle divider under title
+            CreatePanel(cardRt, "DisclaimerTitleDivider", new Vector2(0f, 246f), new Vector2(240f, 2f), colBorder);
+
+            // Readable wrapped disclaimer body text
+            const string disclaimerBody =
+                "This Layer doesn't modify the mods,IRIS It intercepts PC mod assemblies on boot, transforms their IL bytecode on-device, bridges Harmony patches into AOT-safe HybridCLR hook chains, repairs shaders and oversized textures, polyfills stripped .NET APIs, and injects a native mobile touch UI with on-screen button mapping.Which eliminates the procedure of porting,but it also eliminates the need of asking creator for permission,that is why mod listed here are all mods which have Permission to allowed to be ported,MIT or GPL license  and Personally asked for permission by someone from porting community.If any closed source mod works with IRIS it is due to pure coincidence and IRIS doesn't support it,that is why its recommended you play with the mods in modding list only.IRIS also generates credits.txt file in mods folder to thank the original creator for the mods.It is just a txt file and doesn't do anything else.";
+
+            var bodyTxt = CreateLabel(
+                cardRt,
+                "DisclaimerBodyText",
+                new Vector2(0f, -12f),
+                new Vector2(1420f, 450f),
+                disclaimerBody,
+                24,
+                FontStyle.Normal,
+                colPrimary,
+                TextAnchor.MiddleLeft);
+            bodyTxt.horizontalOverflow = HorizontalWrapMode.Wrap;
+            bodyTxt.verticalOverflow = VerticalWrapMode.Overflow;
+            bodyTxt.lineSpacing = 1.28f;
+
+            // Bottom progress hairline track (1580px wide)
+            var trackRt = CreatePanel(cardRt, "DisclaimerProgressTrack", new Vector2(0f, -296f), new Vector2(1580f, 3.5f), colTrack).rectTransform;
+            var fillImg = CreatePanel(trackRt, "DisclaimerProgressFill", Vector2.zero, new Vector2(0f, 3.5f), colGold);
+            _disclaimerFillBarRect = fillImg.rectTransform;
+            _disclaimerFillBarRect.anchorMin = new Vector2(0f, 0.5f);
+            _disclaimerFillBarRect.anchorMax = new Vector2(0f, 0.5f);
+            _disclaimerFillBarRect.pivot = new Vector2(0f, 0.5f);
+            _disclaimerFillBarRect.anchoredPosition = Vector2.zero;
+
+            // Footer left brand + right countdown
+            CreateLabel(
+                cardRt,
+                "DisclaimerFooterLeft",
+                new Vector2(-420f, -328f),
+                new Vector2(680f, 36f),
+                "IRIS v2.9.8.23  //  PC MOD COMPATIBILITY LAYER",
+                17,
+                FontStyle.Bold,
+                colMuted,
+                TextAnchor.MiddleLeft);
+
+            _disclaimerCountdownText = CreateLabel(
+                cardRt,
+                "DisclaimerFooterRight",
+                new Vector2(420f, -328f),
+                new Vector2(680f, 36f),
+                "CONTINUING IN 7s",
+                18,
+                FontStyle.Bold,
+                colGold,
+                TextAnchor.MiddleRight);
+
+            _showingDisclaimer = true;
         }
 
         private void RefreshStealthRibbonTexts()
@@ -6011,6 +6177,7 @@ namespace SilksongMobileAPI
         {
             if (!IsActive && !_fadingOut) return;
 
+            if (_showingDisclaimer) return;
             _watchdogElapsed += Mathf.Min(Time.unscaledDeltaTime, 0.25f);
             if (_isActivelyPreloading || AssetHelperBridge.IsExtractingPharloomsGloryScene || AssetHelperBridge.IsAnyRepackerBusy())
             {
@@ -6093,7 +6260,42 @@ namespace SilksongMobileAPI
 
         private IEnumerator RunPreloader()
         {
-            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.6)...");
+            if (_disclaimerRoot != null && _disclaimerGroup != null)
+            {
+                _showingDisclaimer = true;
+                float elapsed = 0f;
+                const float duration = 7.0f;
+                int lastSec = 8;
+                while (elapsed < duration)
+                {
+                    elapsed += Mathf.Min(Time.unscaledDeltaTime, 0.1f);
+                    float t = Mathf.Clamp01(elapsed / duration);
+                    if (_disclaimerFillBarRect != null)
+                        _disclaimerFillBarRect.sizeDelta = new Vector2(1580f * t, 3.5f);
+                    int rem = Mathf.Clamp(Mathf.CeilToInt(duration - elapsed), 1, 7);
+                    if (rem != lastSec && _disclaimerCountdownText != null)
+                    {
+                        lastSec = rem;
+                        _disclaimerCountdownText.text = "CONTINUING IN " + rem.ToString() + "s";
+                    }
+                    yield return null;
+                }
+                if (_disclaimerFillBarRect != null)
+                    _disclaimerFillBarRect.sizeDelta = new Vector2(1580f, 3.5f);
+                float fade = 1f;
+                while (fade > 0.01f)
+                {
+                    fade -= Time.unscaledDeltaTime * 3.0f;
+                    if (_disclaimerGroup != null)
+                        _disclaimerGroup.alpha = Mathf.Clamp01(fade);
+                    yield return null;
+                }
+                if (_disclaimerRoot != null)
+                    _disclaimerRoot.SetActive(false);
+                _showingDisclaimer = false;
+                _watchdogElapsed = 0f;
+            }
+            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.23)...");
             TrySetBackgroundLoadingPriority(ThreadPriority.High);
             yield return null;
 

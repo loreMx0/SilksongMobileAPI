@@ -7028,6 +7028,7 @@ namespace SilksongMobileAPI
 
         public static void RegisterSSMPAddonsFromAssembly(Assembly asm, bool hasBaseUnityPlugin)
         {
+            return; // Disabled in IRIS v2.9.8.23 (SSMP & SSMP addons blocked)
             if (asm == null) return;
             try
             {
@@ -7078,6 +7079,7 @@ namespace SilksongMobileAPI
 
         public static void BootstrapSSMPOnMainMenuIfReady(List<BepInEx.BaseUnityPlugin> plugins)
         {
+            return; // Disabled in IRIS v2.9.8.23 (SSMP blocked)
             if (_ssmpInitializedOnMainMenu) return;
             try
             {

@@ -221,12 +221,21 @@ namespace SilksongMobileAPI
                 var srcActions = GetStateActionsSafe(sourceState);
                 if (srcActions != null && srcActions.Length > 0)
                 {
-                    var clonedActions = new FsmStateAction[srcActions.Length];
+                    var clonedList = new List<FsmStateAction>(srcActions.Length);
                     for (int i = 0; i < srcActions.Length; i++)
                     {
-                        clonedActions[i] = CloneActionInstanceSafe(srcActions[i], copy);
+                        var srcAct = srcActions[i];
+                        if (srcAct == null) continue;
+                        // Match PC PlayMaker FsmState(source) semantics: runtime FsmUtil delegate/lambda
+                        // actions are not in serialized actionData and must not be copied by CopyState
+                        // (fixes LostAndChained Idle -> Idle Choice -> Idle 1 1000-loop in Attack Control).
+                        if (srcAct is Silksong.FsmUtil.Actions.LambdaAction) continue;
+                        var actType = srcAct.GetType();
+                        if (actType.IsGenericType && actType.GetGenericTypeDefinition() == typeof(Silksong.FsmUtil.Actions.DelegateAction<>))
+                            continue;
+                        clonedList.Add(CloneActionInstanceSafe(srcAct, copy));
                     }
-                    SetStateActionsSafe(copy, clonedActions);
+                    SetStateActionsSafe(copy, clonedList.ToArray());
                 }
                 if (sourceState.Transitions != null && copy.Transitions != null && copy.Transitions.Length == sourceState.Transitions.Length)
                 {

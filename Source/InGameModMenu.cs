@@ -103,29 +103,33 @@ namespace SilksongMobileAPI
 
         public static bool IsArchitectOrDependentPackage(string name, string fullName, IEnumerable<string> dependencies, string description = null)
         {
-            if (SilksongMobileAPIPlugin.IsExcludedModIdentifier(name) ||
-                SilksongMobileAPIPlugin.IsExcludedModIdentifier(fullName))
+            // HkCore & HkBossLoader are removed from Install Mods List ONLY (still work if placed in BepInEx/plugins/)
+            if (SilksongMobileAPIPlugin.IsHkCoreOrBossLoaderIdentifier(name) ||
+                SilksongMobileAPIPlugin.IsHkCoreOrBossLoaderIdentifier(fullName))
                 return true;
-            if (!string.IsNullOrEmpty(description) &&
-                (description.IndexOf("not allowed to be ported", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                 description.IndexOf("prohibits mobile porting", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                 description.IndexOf("do not port", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                 description.IndexOf("don't port", StringComparison.OrdinalIgnoreCase) >= 0))
+            if (SilksongMobileAPIPlugin.IsExcludedModIdentifier(name) ||
+                SilksongMobileAPIPlugin.IsExcludedModIdentifier(fullName) ||
+                SilksongMobileAPIPlugin.IsStitchworkSkinOrAssetPackName(name) ||
+                SilksongMobileAPIPlugin.IsStitchworkSkinOrAssetPackName(fullName) ||
+                SilksongMobileAPIPlugin.IsSsmpOrAddonIdentifier(name) ||
+                SilksongMobileAPIPlugin.IsSsmpOrAddonIdentifier(fullName))
                 return true;
             if (dependencies != null)
             {
                 foreach (var dep in dependencies)
                 {
                     if (string.IsNullOrEmpty(dep)) continue;
-                    // Never remove Stitchwork skin/voice packs from the catalog just because they list Stitchwork as a dependency!
-                    if (dep.IndexOf("Stitchwork", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                        dep.IndexOf("StitchworkWiki", StringComparison.OrdinalIgnoreCase) < 0)
-                        continue;
                     if (SilksongMobileAPIPlugin.IsExcludedModIdentifier(dep) ||
+                        SilksongMobileAPIPlugin.IsStitchworkSkinOrAssetPackName(dep) ||
+                        SilksongMobileAPIPlugin.IsSsmpOrAddonIdentifier(dep) ||
                         dep.IndexOf("-Architect-", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         dep.EndsWith("-Architect", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(dep, "Architect", StringComparison.OrdinalIgnoreCase) ||
-                        dep.IndexOf("com.cometcake575.architect", StringComparison.OrdinalIgnoreCase) >= 0)
+                        dep.IndexOf("com.cometcake575.architect", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        dep.IndexOf("Stitchwork", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        dep.IndexOf("Patchwork", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        dep.IndexOf("SSMP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        dep.IndexOf("BasicEnemySync", StringComparison.OrdinalIgnoreCase) >= 0)
                         return true;
                 }
             }
@@ -198,6 +202,7 @@ namespace SilksongMobileAPI
                             string.Equals(folderName, "Patchwork", StringComparison.OrdinalIgnoreCase))
                             continue;
 
+                        EnsureCreditsFileForModDir(dir);
                         var dllFiles = Directory.GetFiles(dir, "*.dll", SearchOption.AllDirectories)
                             .Where(f => f.IndexOf(".cecil_cache", StringComparison.OrdinalIgnoreCase) < 0)
                             .ToArray();
@@ -474,7 +479,7 @@ namespace SilksongMobileAPI
                             }
                         }
 
-                        // Completely ignore Architect, mods requiring Architect, and mods prohibiting porting
+                        // Filter out ONLY Architect (+ dependents), Stitchwork (+ Hornet skins), SSMP (+ addons), and HkCore/HkBossLoader (store-only)
                         if (IsArchitectOrDependentPackage(name, fullName, depList, desc))
                             continue;
 
@@ -573,68 +578,71 @@ namespace SilksongMobileAPI
 
             OnlineCatalog.Add(new OnlineModCatalogItem
             {
-                PackageName = "Final_Judge",
-                Author = "TheWeirdo931",
-                Version = "1.0.1",
-                DisplayTitle = "The Final Judge (Boss Buff)",
-                Description = "Substantially increases difficulty of Last Judge (1,500 HP, faster charges, rage phases, custom shockwaves).",
-                DownloadUrl = "https://thunderstore.io/package/download/TheWeirdo931/Final_Judge/1.0.1/",
+                PackageName = "AuricAegis",
+                FullName = "AstrumNova-AuricAegis",
+                Author = "AstrumNova",
+                Version = "1.1.2",
+                DisplayTitle = "Auric Aegis",
+                Description = "Custom boss encounter and gameplay overhaul by AstrumNova (explicit unrestricted permission).",
+                DownloadUrl = "https://thunderstore.io/package/download/AstrumNova/AuricAegis/1.1.2/",
                 IsCompatible = true,
-                CompatibilityReason = "Full Harmony & FSM support. Verified on mobile.",
+                CompatibilityReason = "Verified open permission. Full IRIS support.",
                 RequiresAdaptation = false
             });
 
             OnlineCatalog.Add(new OnlineModCatalogItem
             {
-                PackageName = "Boss_Rush_for_Silksong_Pantheon_mod",
-                Author = "mochasippadev",
-                Version = "1.1.1",
-                DisplayTitle = "Boss Rush (Pantheon of Pharloom)",
-                Description = "Full Boss Rush mode with sequenced arena gates, custom timer HUD, and pantheon mechanics.",
-                DownloadUrl = "https://thunderstore.io/package/download/mochasippadev/Boss_Rush_for_Silksong_Pantheon_mod/1.1.1/",
+                PackageName = "KarmelitaPrime",
+                FullName = "MicheliniDev-KarmelitaPrime",
+                Author = "MicheliniDev",
+                Version = "1.0.0",
+                DisplayTitle = "Karmelita Prime",
+                Description = "Enhanced Skarrsinger Karmelita boss battle (MIT License).",
+                DownloadUrl = "https://thunderstore.io/package/download/MicheliniDev/KarmelitaPrime/1.0.0/",
                 IsCompatible = true,
-                CompatibilityReason = "Native menu integration + crash guard.",
-                RequiresAdaptation = true,
-                AdaptationDetails = "Safe UI highlight and arena gate initialization."
+                CompatibilityReason = "MIT Licensed. Full Harmony & FSM support.",
+                RequiresAdaptation = false
             });
 
             OnlineCatalog.Add(new OnlineModCatalogItem
             {
-                PackageName = "RebelliousSecondSentinel",
-                Author = "Danny752786",
-                Version = "0.1.2",
-                DisplayTitle = "Rebellious Second Sentinel",
-                Description = "Reinvents the Second Sentinel boss fight with new attack timings, AI aggression, and combos.",
-                DownloadUrl = "https://thunderstore.io/package/download/Danny752786/RebelliousSecondSentinel/0.1.2/",
+                PackageName = "LostSinner",
+                FullName = "JngoCreates-LostSinner",
+                Author = "JngoCreates",
+                Version = "1.0.0",
+                DisplayTitle = "Lost Sinner",
+                Description = "Custom Act 3 boss fight (MIT License).",
+                DownloadUrl = "https://thunderstore.io/package/download/JngoCreates/LostSinner/1.0.0/",
                 IsCompatible = true,
-                CompatibilityReason = "Requires HybridCLR FSM lock adaptation.",
-                RequiresAdaptation = true,
-                AdaptationDetails = "Auto-bridges FsmState.LoadActions HybridCLR reflection lock."
+                CompatibilityReason = "MIT Licensed. Full Harmony & FSM support.",
+                RequiresAdaptation = false
             });
 
             OnlineCatalog.Add(new OnlineModCatalogItem
             {
-                PackageName = "TripleProjectiles",
+                PackageName = "DoubleEnemiesMod",
+                FullName = "adwamogus-DoubleEnemiesMod",
                 Author = "adwamogus",
                 Version = "1.0.0",
-                DisplayTitle = "Triple Projectiles (Mobile)",
-                Description = "Multiplies tool throw count (Straight Pins, Threefold Pins, Stingshard) with balanced silk consumption.",
-                DownloadUrl = "https://thunderstore.io/package/download/adwamogus/TripleProjectiles/1.0.0/",
+                DisplayTitle = "Double Enemies Mod",
+                Description = "Doubles enemy spawns across Pharloom for extra challenge (MIT License).",
+                DownloadUrl = "https://thunderstore.io/package/download/adwamogus/DoubleEnemiesMod/1.0.0/",
                 IsCompatible = true,
-                CompatibilityReason = "Fully compatible lightweight gameplay mod.",
+                CompatibilityReason = "MIT Licensed. Lightweight gameplay mod.",
                 RequiresAdaptation = false
             });
 
             OnlineCatalog.Add(new OnlineModCatalogItem
             {
-                PackageName = "Stonks",
-                Author = "SaigoNoTanuki",
+                PackageName = "FastFastTravel",
+                FullName = "Clazex-FastFastTravel",
+                Author = "Clazex",
                 Version = "1.0.0",
-                DisplayTitle = "Stonks (Rosary & Geo Multiplier)",
-                Description = "Customizable multiplier for geo, rosaries, and shell shard drops from enemies and caches.",
-                DownloadUrl = "https://thunderstore.io/package/download/SaigoNoTanuki/Stonks/1.0.0/",
+                DisplayTitle = "Fast Fast Travel",
+                Description = "Speeds up fast travel transitions (MIT License).",
+                DownloadUrl = "https://thunderstore.io/package/download/Clazex/FastFastTravel/1.0.0/",
                 IsCompatible = true,
-                CompatibilityReason = "Standard IL2CPP harmony patches; 100% stable.",
+                CompatibilityReason = "MIT Licensed. Lightweight QoL mod.",
                 RequiresAdaptation = false
             });
 
@@ -1063,6 +1071,7 @@ namespace SilksongMobileAPI
                     }
                     else
                     {
+                        WriteModCreditsFile(targetDir, curPkg.DisplayTitle, curPkg.Author);
                         SilksongMobileAPIPlugin.PreOrganizeTopLevelPcModDlls();
                         extractSuccess = true;
                     }
@@ -1104,6 +1113,98 @@ namespace SilksongMobileAPI
             ScanInstalledMods();
             ModPreloaderScreen.FinishOperationOverlay($"Installed {item.DisplayTitle}!", 0.45f);
             onComplete?.Invoke(true, null);
+        }
+
+        public static void EnsureCreditsFileForModDir(string modDir)
+        {
+            if (string.IsNullOrEmpty(modDir) || !Directory.Exists(modDir)) return;
+            try
+            {
+                string folderName = Path.GetFileName(modDir) ?? "";
+                if (string.IsNullOrEmpty(folderName) ||
+                    folderName.StartsWith(".", StringComparison.Ordinal) ||
+                    folderName.StartsWith("00_", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(folderName, "SilksongMobileAPI", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(folderName, "IRIS", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                string creditsPath = Path.Combine(modDir, "credits.txt");
+                if (File.Exists(creditsPath)) return;
+
+                // Only generate credits.txt for directories containing a mod manifest or plugin DLL
+                string manifestPath = Path.Combine(modDir, "manifest.json");
+                bool hasManifest = File.Exists(manifestPath);
+                bool hasDll = hasManifest || Directory.GetFiles(modDir, "*.dll", SearchOption.AllDirectories).Length > 0;
+                if (!hasDll) return;
+
+                string modName = "";
+                string creator = "";
+
+                if (hasManifest)
+                {
+                    try
+                    {
+                        var jo = JObject.Parse(File.ReadAllText(manifestPath));
+                        modName = jo.Value<string>("name") ?? "";
+                        creator = jo.Value<string>("author") ?? jo.Value<string>("owner") ?? "";
+                    }
+                    catch { }
+                }
+
+                // Fallback: parse Thunderstore folder naming convention "Author-ModName-1.0.0"
+                string cleanFolder = System.Text.RegularExpressions.Regex.Replace(folderName, @"-\d+\.\d+.*$", "");
+                int dashIdx = cleanFolder.IndexOf('-');
+                if (dashIdx > 0 && dashIdx + 1 < cleanFolder.Length)
+                {
+                    if (string.IsNullOrWhiteSpace(creator))
+                        creator = cleanFolder.Substring(0, dashIdx).Trim();
+                    if (string.IsNullOrWhiteSpace(modName))
+                        modName = cleanFolder.Substring(dashIdx + 1).Trim();
+                }
+
+                if (string.IsNullOrWhiteSpace(modName))
+                    modName = cleanFolder.Replace('_', ' ').Trim();
+                else
+                    modName = modName.Replace('_', ' ').Trim();
+
+                if (string.IsNullOrWhiteSpace(creator))
+                    creator = "the mod creator";
+
+                WriteModCreditsFile(modDir, modName, creator);
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[ModManager] EnsureCreditsFileForModDir notice for '{modDir}': {ex.Message}");
+            }
+        }
+
+        public static void WriteModCreditsFile(string targetDir, string modName, string creator)
+        {
+            if (string.IsNullOrEmpty(targetDir) || !Directory.Exists(targetDir)) return;
+            try
+            {
+                string safeMod = string.IsNullOrWhiteSpace(modName) ? Path.GetFileName(targetDir) : modName.Trim();
+                string safeCreator = string.IsNullOrWhiteSpace(creator) ? "the mod creator" : creator.Trim();
+                string creditsText =
+                    "(This is just an auto generated text file generated by IRIS thanking the creator of the mod)\n" +
+                    safeMod + "\n" +
+                    "Thanks " + safeCreator + " For this amazing mod,we are in the knowledge that this mod is intended for the pc version of silksong,however most people are not privileged to have a great pc or even have a pc at their house, Forcing them to rely on Mobile ports of the game.I respect the work of Team Cherry and your work and contribution to the community.If your mod was on the downloading list or downloaded it will be due to these reasons:\n" +
+                    "1. Permission to allowed to be ported\n" +
+                    "2. MIT or GPL license \n" +
+                    "3. Personally asked for permission by someone from porting community.\n" +
+                    "\n" +
+                    "If you don't like your mod to be associated with the mobile port you can file a takedown request (at discord id loremx0) we will Edit the modding list and update the api to never work with your mod without breaking other mods. \n" +
+                    "Again we thank you for the wonderful mod " + safeMod + "\n" +
+                    "\n" +
+                    "Regards,\n" +
+                    "Beeg yoshi\n";
+                File.WriteAllText(Path.Combine(targetDir, "credits.txt"), creditsText, System.Text.Encoding.UTF8);
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[ModManager] Generated credits.txt for '{safeMod}' by '{safeCreator}'.");
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[ModManager] Failed to write credits.txt in '{targetDir}': {ex.Message}");
+            }
         }
     }
 
@@ -2551,13 +2652,17 @@ namespace SilksongMobileAPI
 
         private static IEnumerator CoRescanAfterImport()
         {
-            yield return new WaitForSeconds(2.0f);
-            try
+            float[] waits = new float[] { 2.0f, 3.0f, 5.0f };
+            for (int i = 0; i < waits.Length; i++)
             {
-                SilksongMobileAPIPlugin.PreOrganizeTopLevelPcModDlls();
-                InGameModManager.Instance?.ScanInstalledMods();
+                yield return new WaitForSecondsRealtime(waits[i]);
+                try
+                {
+                    SilksongMobileAPIPlugin.PreOrganizeTopLevelPcModDlls();
+                    InGameModManager.Instance?.ScanInstalledMods();
+                }
+                catch (System.Exception __apiEx_18) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("InGameModMenu", "L2542", __apiEx_18); }
             }
-            catch (System.Exception __apiEx_18) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("InGameModMenu", "L2542", __apiEx_18); }
         }
 
         // =====================================================================

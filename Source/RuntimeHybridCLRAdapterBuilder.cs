@@ -213,6 +213,8 @@ namespace SilksongMobileAPI
         private static readonly bool[] _shouldRunPostfix = new bool[MaxChains];
         private static readonly Dictionary<Type, object> _defaultValueCache = new Dictionary<Type, object>(64);
         private static readonly List<MethodBase> _allPatchedMethods = new List<MethodBase>();
+        private static MethodHookChain _cachedNailClashChain;
+        private static bool _nailClashChainLookupDone;
         private static int _nextChainId = 1;
 
         private const BindingFlags AllFlags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy;
@@ -375,6 +377,11 @@ namespace SilksongMobileAPI
                         PlayMakerTargetKind = ClassifyPlayMakerTargetKind(declType, targetMethod.Name)
                     };
                     _chainsByKey[key] = chain;
+                    if (key.StartsWith("DamageHero::NailClash(", StringComparison.Ordinal))
+                    {
+                        _cachedNailClashChain = chain;
+                        _nailClashChainLookupDone = true;
+                    }
                     if ((uint)chainId < MaxChains)
                         _chainsById[chainId] = chain;
                 }
@@ -713,6 +720,14 @@ namespace SilksongMobileAPI
                 }
             }
 
+            // HkBossLoader.HkBindings uses AccessTools.FieldRefAccess on InventoryItemToolManager & InventoryToolCrestSlot
+            // (RefreshTools / BeginSwitchingCrest / UpdateSlotDisplay), causing native IL2CPP SIGABRT when switching inventory in Godhome.
+            if (string.Equals(modName, "HkBossLoader", StringComparison.OrdinalIgnoreCase) &&
+                (declName == "InventoryItemToolManager" || declName == "InventoryToolCrestSlot"))
+            {
+                return true;
+            }
+
             if (declName == "InventoryItemSelectableDirectional" ||
                 declName == "InventoryItemComboButtonPromptDisplay")
             {
@@ -1041,6 +1056,11 @@ namespace SilksongMobileAPI
                         IsFinalJudgeFsmStateEnter = false
                     };
                     _chainsByKey[key] = chain;
+                    if (key.StartsWith("DamageHero::NailClash(", StringComparison.Ordinal))
+                    {
+                        _cachedNailClashChain = chain;
+                        _nailClashChainLookupDone = true;
+                    }
                     if ((uint)chainId < MaxChains)
                         _chainsById[chainId] = chain;
                     lock (_allPatchedMethods)
@@ -2371,19 +2391,44 @@ namespace SilksongMobileAPI
         public static void InvokeBridgedDamageHeroNailClash(DamageHero dh, float direction, string colliderTag, Vector3 clasherPos, bool isPrefix)
         {
             if (dh == null) return;
-            MethodHookChain ncChain = null;
-            lock (_chainsByKey)
+
+            // Pale Automaton parry freeze frame (matches Aeternal Everwatcher: FreezeMomentTypes.NailClashEffect = 3)
+            if (!isPrefix &&
+                (SilksongMobileAPIPlugin.CfgPaleAutomatonParryFreeze?.Value ?? true) &&
+                AssetHelperBridge.IsPaleAutomatonBossSceneActive())
             {
-                if (!_chainsByKey.TryGetValue("DamageHero::NailClash(System.Single,System.String,UnityEngine.Vector3)", out ncChain))
+                try
                 {
-                    foreach (var kv in _chainsByKey)
+                    var gm = GameManager.instance;
+                    if (gm != null && !gm.TimeSlowed)
                     {
-                        if (kv.Key.StartsWith("DamageHero::NailClash(", StringComparison.Ordinal))
+                        gm.FreezeMoment(3); // FreezeMomentTypes.NailClashEffect (0.01f, 0.25f, 0.1f, 0f)
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SilksongMobileAPIPlugin.LogApiCatch("RuntimeHybridCLRAdapterBuilder", "PaleAutomatonParryFreeze", ex);
+                }
+            }
+
+            MethodHookChain ncChain = _cachedNailClashChain;
+            if (ncChain == null && !_nailClashChainLookupDone)
+            {
+                lock (_chainsByKey)
+                {
+                    if (!_chainsByKey.TryGetValue("DamageHero::NailClash(System.Single,System.String,UnityEngine.Vector3)", out ncChain))
+                    {
+                        foreach (var kv in _chainsByKey)
                         {
-                            ncChain = kv.Value;
-                            break;
+                            if (kv.Key.StartsWith("DamageHero::NailClash(", StringComparison.Ordinal))
+                            {
+                                ncChain = kv.Value;
+                                break;
+                            }
                         }
                     }
+                    _cachedNailClashChain = ncChain;
+                    _nailClashChainLookupDone = true;
                 }
             }
             if (ncChain == null) return;

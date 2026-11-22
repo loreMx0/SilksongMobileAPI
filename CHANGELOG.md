@@ -1,5 +1,42 @@
 # Silksong Mobile PC Mod Compatibility API - Changelog
 
+## [v2.9.8.23] - 2026-11-22
+
+### Added & Enhanced
+- **Lost and Chained Integration & Stability (`PlayMakerHybridCLRBridge`, `CecilEngine`, `AssetHelperBridge`)**:
+  - Fixed 1000-iteration loop in GMS's `Attack Control` FSM (`Idle -> Idle Choice -> Idle 1`) by updating `CloneFsmStateSafe` to match PC PlayMaker `CopyState` semantics (skipping runtime `Silksong.FsmUtil.Actions.LambdaAction` and `Silksong.FsmUtil.Actions.DelegateAction<>`).
+  - Resolved HybridCLR `AllocStackSlot` register overflow in `GMSMain.PatchHand` with compact table-driven bytecode patching (`LostAndChained_PatchHandSafe`).
+  - Tightened Cecil Rule 9c parameter validation for `FsmUtil.InsertMethod` and `AddMethod` overload rewriting.
+  - Added non-GameObject `ManagedAsset<T>` loading for audio clips and music cues (`ManagedAsset<AudioClip>`, `ManagedAsset<MusicCue>`) directly from APK bundles.
+  - Suppressed full-arena white falling dust and persistent rubble particle effects during GMS fight (`LcGateRubbleFieldDust`, `LcDisableTempRoarRubbleOnce`).
+  - Added `AssetHelper` v1.2.2 to v1.3.2.1 `ManagedAsset<T>.Load`/`IsLoaded` ABI bridge.
+
+- **Pale Automaton Boss & Parry Freeze (`AssetHelperBridge`, `RuntimeHybridCLRAdapterBuilder`, `SilksongMobileAPIPlugin`)**:
+  - Implemented parry freeze frame timing via `DamageHero.NailClash` postfix invoking `GameManager.FreezeMoment(FreezeMomentTypes.NailClashEffect)`, configurable via `BossFixes.PaleAutomatonParryFreeze`.
+  - Added `StripPaleAutomatonDeactivateComponents` to remove `DeactivateIfPlayerdata*` and `PersistentBoolItem` components on `hang_17b` ("Boss Scene - To Additive Load") templates, ensuring Song Knight activates cleanly.
+  - Guarded and unstuck Song Knight wake transitions in `Arborium_11`.
+
+- **Godhome & Hollow Knight 1 Hub & Arena Fixes (`AssetHelperBridge`, `RuntimeHybridCLRAdapterBuilder`)**:
+  - Prevented native IL2CPP `SIGABRT` crashes on inventory/crest switching in Godhome by skipping unsafe `FieldRefAccess` hooks on `InventoryItemToolManager` and `InventoryToolCrestSlot` in `HkBossLoader.HkBindings`.
+  - Enabled bench persistence across save & quit in Godhome hubs (`GG_Atrium`, `GG_Workshop`, `GG_Atrium_Roof`) with `BossFixes.AllowGodhomeBenchRespawn`, hooking `GameManager.SetDeathRespawnSimple` and `SaveGame`.
+  - Cleaned up statue boss fight completion handling and routed non-lethal pantheon death respawns safely.
+  - Added hardware-compressed Android texture detection (`ASTC` / `ETC2`) in memory guards to bypass redundant decompression.
+  - Updated Godhome floating bubble launcher with opaque black King's Brand symbol on white circle.
+
+- **Mod Management, Author Credits & Policy (`InGameModMenu`, `SilksongMobileAPIPlugin`)**:
+  - Added automatic `credits.txt` generation in mod directories for imported and downloaded mods, thanking original creators and providing takedown contact details (`loremx0` on Discord).
+  - Added a themed 7-second startup disclaimer overlay detailing mod porting context and auto-generated credits.
+  - Enforced catalog filtering: excluded Architect (+ dependents), Stitchwork skins/assets, SSMP (+ addons), and removed `HkCore`/`HkBossLoader` from online download lists while preserving local runtime loading.
+  - Disabled SSMP and SSMP addon runtime bootstrapping.
+
+- **Performance & Cecil Bytecode Cache (`CecilEngine`, `SilksongMobileAPIPlugin`)**:
+  - Disabled verbose API diagnostic logging by default (`Diagnostics.EnableVerboseApiLogging = false`) to eliminate idle I/O disk stutters.
+  - Cached `DamageHero.NailClash` hook chain for zero-lock O(1) parry dispatch.
+  - Bumped Cecil bytecode cache to `.cecil_cache_v2986` with automatic cleanup of obsolete cache directories.
+
+- **Documentation & README Overhaul (`README.md`)**:
+  - Streamlined and modernized `README.md` with updated architecture overview, tested mod list highlights, and clean build instructions.
+
 ## [v2.9.7.1] - 2026-11-20
 
 ### Added & Enhanced

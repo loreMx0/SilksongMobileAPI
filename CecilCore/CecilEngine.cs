@@ -232,15 +232,15 @@ namespace SilksongMobileAPI.CecilCore
                     {
                         try
                         {
-                            foreach (var oldName in new[] { ".cecil_cache_v2428", ".cecil_cache_v2429", ".cecil_cache_v2430", ".cecil_cache_v2432", ".cecil_cache_v250", ".cecil_cache_v251", ".cecil_cache_v251a", ".cecil_cache_v252", ".cecil_cache_v255", ".cecil_cache_v257", ".cecil_cache_v258", ".cecil_cache_v259", ".cecil_cache_v260", ".cecil_cache_v261", ".cecil_cache_v262", ".cecil_cache_v263", ".cecil_cache_v264", ".cecil_cache_v265", ".cecil_cache_v266", ".cecil_cache_v267", ".cecil_cache_v268", ".cecil_cache_v269", ".cecil_cache_v275", ".cecil_cache_v280", ".cecil_cache_v281", ".cecil_cache_v282", ".cecil_cache_v283", ".cecil_cache_v284", ".cecil_cache_v285", ".cecil_cache_v286", ".cecil_cache_v287", ".cecil_cache_v289", ".cecil_cache_v290", ".cecil_cache_v292", ".cecil_cache_v293", ".cecil_cache_v294", ".cecil_cache_v295", ".cecil_cache_v296", ".cecil_cache_v2961", ".cecil_cache_v2962", ".cecil_cache_v2963", ".cecil_cache_v2964", ".cecil_cache_v2965", ".cecil_cache_v2966", ".cecil_cache_v2967", ".cecil_cache_v2968", ".cecil_cache_v29614", ".cecil_cache_v29615", ".cecil_cache_v29618", ".cecil_cache_v29620", ".cecil_cache_v29625", ".cecil_cache_v29626" })
+                            foreach (var oldName in new[] { ".cecil_cache_v2428", ".cecil_cache_v2429", ".cecil_cache_v2430", ".cecil_cache_v2432", ".cecil_cache_v250", ".cecil_cache_v251", ".cecil_cache_v251a", ".cecil_cache_v252", ".cecil_cache_v255", ".cecil_cache_v257", ".cecil_cache_v258", ".cecil_cache_v259", ".cecil_cache_v260", ".cecil_cache_v261", ".cecil_cache_v262", ".cecil_cache_v263", ".cecil_cache_v264", ".cecil_cache_v265", ".cecil_cache_v266", ".cecil_cache_v267", ".cecil_cache_v268", ".cecil_cache_v269", ".cecil_cache_v275", ".cecil_cache_v280", ".cecil_cache_v281", ".cecil_cache_v282", ".cecil_cache_v283", ".cecil_cache_v284", ".cecil_cache_v285", ".cecil_cache_v286", ".cecil_cache_v287", ".cecil_cache_v289", ".cecil_cache_v290", ".cecil_cache_v292", ".cecil_cache_v293", ".cecil_cache_v294", ".cecil_cache_v295", ".cecil_cache_v296", ".cecil_cache_v2961", ".cecil_cache_v2962", ".cecil_cache_v2963", ".cecil_cache_v2964", ".cecil_cache_v2965", ".cecil_cache_v2966", ".cecil_cache_v2967", ".cecil_cache_v2968", ".cecil_cache_v29614", ".cecil_cache_v29615", ".cecil_cache_v29618", ".cecil_cache_v29620", ".cecil_cache_v29625", ".cecil_cache_v29626", ".cecil_cache_v2983", ".cecil_cache_v2984" })
                             {
-                                if (oldName == ".cecil_cache_v29626") continue;
+                                if (oldName == ".cecil_cache_v2986") continue;
                                 string oldP = Path.Combine(parentDir, oldName);
                                 if (Directory.Exists(oldP)) Directory.Delete(oldP, true);
                             }
                         }
                         catch { }
-                        cacheDir = Path.Combine(parentDir, ".cecil_cache_v29626");
+                        cacheDir = Path.Combine(parentDir, ".cecil_cache_v2986");
                         ulong fnv = ComputeFnv1a64(rawBytes);
                         string modeTag = preAlreadyLoaded ? "rt" : "std";
                         cachePrefix = Path.Combine(cacheDir, $"{shortFileName}_{rawBytes.Length}_{fnv:X16}_{modeTag}");
@@ -1598,6 +1598,31 @@ namespace SilksongMobileAPI.CecilCore
                                     ins[i + 1].Operand = null;
                                     LogInfo($"[PCMod:{origModName}] Cleared BoolTest.isFalse='WALL' in PhantinelComponent.CoordinateHealth so Second Sentinel moves freely in Phase 1.");
                                 }
+                            }
+                        }
+                    }
+                }
+                else if (td.FullName == "LostAndChained.Components.GMSMain" && _assetHelperBridgeType != null)
+                {
+                    var patchHandSafeMi = _assetHelperBridgeType.GetMethod("LostAndChained_PatchHandSafe", BindingFlags.Static | BindingFlags.Public);
+                    if (patchHandSafeMi != null)
+                    {
+                        var importedPatchHand = mod.ImportReference(patchHandSafeMi);
+                        foreach (var md in td.Methods)
+                        {
+                            if (md.Name == "PatchHand" && md.Parameters.Count == 1 && md.HasBody)
+                            {
+                                md.Body.Instructions.Clear();
+                                md.Body.ExceptionHandlers.Clear();
+                                md.Body.Variables.Clear();
+                                md.Body.InitLocals = false;
+                                md.Body.MaxStackSize = 4;
+                                var il = md.Body.GetILProcessor();
+                                il.Append(il.Create(OpCodes.Ldarg_0));
+                                il.Append(il.Create(OpCodes.Ldarg_1));
+                                il.Append(il.Create(OpCodes.Call, importedPatchHand));
+                                il.Append(il.Create(OpCodes.Ret));
+                                LogInfo($"[PCMod:{origModName}] Redirected LostAndChained.Components.GMSMain.PatchHand -> LostAndChained_PatchHandSafe (avoids HybridCLR AllocStackSlot overflow).");
                             }
                         }
                     }
@@ -3839,18 +3864,61 @@ namespace SilksongMobileAPI.CecilCore
                             }
                         }
 
-                        // 7z. Pre-bind ManagedAssetBase<T>.Load() and track ManagedAssetExtensions.InstantiateAsset + safe DestroyImmediate
+                        // 7z. Bridge AssetHelper v1.2.x ManagedAsset<T>.Load() / get_IsLoaded() & pre-bind ManagedAssetBase<T>.Load()
                         if ((declFull.StartsWith("Silksong.AssetHelper.ManagedAssets.ManagedAssetBase`1", StringComparison.Ordinal) ||
                              declFull.StartsWith("Silksong.AssetHelper.ManagedAssets.ManagedAsset`1", StringComparison.Ordinal)) &&
                             mName == "Load" && mr.Parameters.Count == 0 && _assetHelperBridgeType != null)
                         {
-                            var preBindMi = _assetHelperBridgeType.GetMethod("EnsureManagedAssetBoundBeforeLoad", BindingFlags.Static | BindingFlags.Public);
-                            if (preBindMi != null)
+                            if (mr.ReturnType != null && mr.ReturnType.FullName == "System.Void")
                             {
-                                il.InsertBefore(ins, il.Create(OpCodes.Dup));
-                                il.InsertBefore(ins, il.Create(OpCodes.Call, mod.ImportReference(preBindMi)));
-                                i += 2;
+                                var loadVoidMi = _assetHelperBridgeType.GetMethod("InvokeManagedAssetLoadVoid", BindingFlags.Static | BindingFlags.Public);
+                                if (loadVoidMi != null)
+                                {
+                                    ins.OpCode = OpCodes.Call;
+                                    ins.Operand = mod.ImportReference(loadVoidMi);
+                                    count++;
+                                    continue;
+                                }
+                            }
+                            else if (declFull.StartsWith("Silksong.AssetHelper.ManagedAssets.ManagedAsset`1", StringComparison.Ordinal) &&
+                                     mr.DeclaringType is GenericInstanceType gitLoad &&
+                                     gitLoad.GenericArguments.Count == 1)
+                            {
+                                var openLoadMi = _assetHelperBridgeType.GetMethod("InvokeManagedAssetLoad", BindingFlags.Static | BindingFlags.Public);
+                                if (openLoadMi != null)
+                                {
+                                    var importedOpen = mod.ImportReference(openLoadMi);
+                                    var ginst = new GenericInstanceMethod(importedOpen);
+                                    ginst.GenericArguments.Add(gitLoad.GenericArguments[0]);
+                                    ins.OpCode = OpCodes.Call;
+                                    ins.Operand = ginst;
+                                    count++;
+                                    continue;
+                                }
+                            }
+                            else
+                            {
+                                var preBindMi = _assetHelperBridgeType.GetMethod("EnsureManagedAssetBoundBeforeLoad", BindingFlags.Static | BindingFlags.Public);
+                                if (preBindMi != null)
+                                {
+                                    il.InsertBefore(ins, il.Create(OpCodes.Dup));
+                                    il.InsertBefore(ins, il.Create(OpCodes.Call, mod.ImportReference(preBindMi)));
+                                    i += 2;
+                                    count++;
+                                }
+                            }
+                        }
+                        if ((declFull.StartsWith("Silksong.AssetHelper.ManagedAssets.ManagedAssetBase`1", StringComparison.Ordinal) ||
+                             declFull.StartsWith("Silksong.AssetHelper.ManagedAssets.ManagedAsset`1", StringComparison.Ordinal)) &&
+                            mName == "get_IsLoaded" && mr.Parameters.Count == 0 && _assetHelperBridgeType != null)
+                        {
+                            var isLoadedMi = _assetHelperBridgeType.GetMethod("GetManagedAssetIsLoaded", BindingFlags.Static | BindingFlags.Public);
+                            if (isLoadedMi != null)
+                            {
+                                ins.OpCode = OpCodes.Call;
+                                ins.Operand = mod.ImportReference(isLoadedMi);
                                 count++;
+                                continue;
                             }
                         }
                         if (declFull == "Silksong.AssetHelper.ManagedAssets.ManagedAssetExtensions" &&
@@ -4084,40 +4152,62 @@ namespace SilksongMobileAPI.CecilCore
                         }
 
                         // 9c. Silksong.FsmUtil.FsmUtil overloads with extra 'bool everyFrame'
+                        // Strictly verify BOTH parameter count AND exact parameter types so 3-arg AddMethod(PlayMakerFSM, string, Action<FsmStateAction>)
+                        // and 4-arg InsertMethod(PlayMakerFSM, string, Action<FsmStateAction>, int) are NEVER rewritten to mismatched arity helpers!
                         if (declFull == "Silksong.FsmUtil.FsmUtil")
                         {
-                            if (mName == "InsertMethod" && mr.Parameters.Count == 4)
+                            string helper = null;
+                            int pCount = mr.Parameters.Count;
+                            if (mName == "InsertMethod" && pCount == 4)
                             {
                                 string p0 = mr.Parameters[0].ParameterType.FullName;
                                 string p1 = mr.Parameters[1].ParameterType.FullName;
-                                string helper = p0.Contains("FsmState")
-                                    ? (p1 == "System.Int32" ? "FsmUtil_InsertMethod_State" : "FsmUtil_InsertMethod_StateReversed")
-                                    : "FsmUtil_InsertMethod_Fsm";
-                                var m = _adapterBuilderType?.Assembly.GetType("SilksongMobileAPI.PlayMakerHybridCLRBridge")?.GetMethod(helper, BindingFlags.Static | BindingFlags.Public);
-                                if (m != null)
+                                string p2 = mr.Parameters[2].ParameterType.FullName;
+                                string p3 = mr.Parameters[3].ParameterType.FullName;
+                                if (p0 == "HutongGames.PlayMaker.FsmState" && p3 == "System.Boolean")
                                 {
-                                    ins.OpCode = OpCodes.Call;
-                                    ins.Operand = mod.ImportReference(m);
-                                    count++;
-                                    continue;
+                                    if (p1 == "System.Int32" && p2 == "System.Action") helper = "FsmUtil_InsertMethod_State";
+                                    else if (p1 == "System.Action" && p2 == "System.Int32") helper = "FsmUtil_InsertMethod_StateReversed";
                                 }
                             }
-                            else if (mName == "AddMethod" && mr.Parameters.Count == 3)
+                            else if (mName == "InsertMethod" && pCount == 5)
                             {
                                 string p0 = mr.Parameters[0].ParameterType.FullName;
-                                string helper = p0.Contains("FsmState") ? "FsmUtil_AddMethod_State" : "FsmUtil_AddMethod_Fsm";
-                                var m = _adapterBuilderType?.Assembly.GetType("SilksongMobileAPI.PlayMakerHybridCLRBridge")?.GetMethod(helper, BindingFlags.Static | BindingFlags.Public);
-                                if (m != null)
-                                {
-                                    ins.OpCode = OpCodes.Call;
-                                    ins.Operand = mod.ImportReference(m);
-                                    count++;
-                                    continue;
-                                }
+                                string p1 = mr.Parameters[1].ParameterType.FullName;
+                                string p2 = mr.Parameters[2].ParameterType.FullName;
+                                string p3 = mr.Parameters[3].ParameterType.FullName;
+                                string p4 = mr.Parameters[4].ParameterType.FullName;
+                                if (p0 == "PlayMakerFSM" && p1 == "System.String" && p2 == "System.Int32" && p3 == "System.Action" && p4 == "System.Boolean")
+                                    helper = "FsmUtil_InsertMethod_Fsm";
                             }
-                            else if (mName == "InsertActionBefore" && mr.Parameters.Count == 2)
+                            else if (mName == "AddMethod" && pCount == 3)
                             {
-                                var m = _adapterBuilderType?.Assembly.GetType("SilksongMobileAPI.PlayMakerHybridCLRBridge")?.GetMethod("FsmUtil_InsertActionBefore", BindingFlags.Static | BindingFlags.Public);
+                                string p0 = mr.Parameters[0].ParameterType.FullName;
+                                string p1 = mr.Parameters[1].ParameterType.FullName;
+                                string p2 = mr.Parameters[2].ParameterType.FullName;
+                                if (p0 == "HutongGames.PlayMaker.FsmState" && p1 == "System.Action" && p2 == "System.Boolean")
+                                    helper = "FsmUtil_AddMethod_State";
+                            }
+                            else if (mName == "AddMethod" && pCount == 4)
+                            {
+                                string p0 = mr.Parameters[0].ParameterType.FullName;
+                                string p1 = mr.Parameters[1].ParameterType.FullName;
+                                string p2 = mr.Parameters[2].ParameterType.FullName;
+                                string p3 = mr.Parameters[3].ParameterType.FullName;
+                                if (p0 == "PlayMakerFSM" && p1 == "System.String" && p2 == "System.Action" && p3 == "System.Boolean")
+                                    helper = "FsmUtil_AddMethod_Fsm";
+                            }
+                            else if (mName == "InsertActionBefore" && pCount == 2)
+                            {
+                                string p0 = mr.Parameters[0].ParameterType.FullName;
+                                string p1 = mr.Parameters[1].ParameterType.FullName;
+                                if (p0 == "HutongGames.PlayMaker.FsmStateAction" && p1 == "HutongGames.PlayMaker.FsmStateAction")
+                                    helper = "FsmUtil_InsertActionBefore";
+                            }
+
+                            if (helper != null)
+                            {
+                                var m = _adapterBuilderType?.Assembly.GetType("SilksongMobileAPI.PlayMakerHybridCLRBridge")?.GetMethod(helper, BindingFlags.Static | BindingFlags.Public);
                                 if (m != null)
                                 {
                                     ins.OpCode = OpCodes.Call;
