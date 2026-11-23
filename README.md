@@ -1,42 +1,40 @@
-# IRIS Layer — Silksong Mobile Modding API
+# IRIS — Silksong Mobile Modding API
 
-[![Dashboard](https://img.shields.io/badge/Changelog%20%26%20Dashboard-bearblog.dev%2Firislayer-ff3e00.svg)](https://irislayer.bearblog.dev/)
-[![Platform](https://img.shields.io/badge/Platform-Android%20%28ARM64%29-green.svg)](#)
-[![Unity](https://img.shields.io/badge/Unity-6000.0.x%20%28IL2CPP%20%2B%20HybridCLR%29-blue.svg)](#)
-[![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)](#)
+[![Version](https://img.shields.io/badge/IRIS-v2.9.8.32-blueviolet.svg)](CHANGELOG.md)
+[![Dashboard](https://img.shields.io/badge/Dashboard-irislayer.bearblog.dev-ff3e00.svg)](https://irislayer.bearblog.dev/)
+[![Platform](https://img.shields.io/badge/Android-ARM64-green.svg)](#)
+[![Unity](https://img.shields.io/badge/Unity-6000.0.x%20IL2CPP%20%2B%20HybridCLR-blue.svg)](#)
+[![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)](LICENSE)
 
-**IRIS** is an on-device compatibility layer that runs desktop (PC) BepInEx, Harmony, and MonoMod mods on the Android port of *Hollow Knight: Silksong* (`com.game.silksong`) without needing separate mobile forks.
+On-device compatibility layer for running PC BepInEx, Harmony, and MonoMod mods on *Hollow Knight: Silksong* Android (`com.game.silksong`) without separate mobile forks.
 
-> **Changelog & Dashboard:** [https://irislayer.bearblog.dev/](https://irislayer.bearblog.dev/)
+## Core Features
+- **Runtime Bytecode Rewriter (`CecilCore`)**: Rewrites PC mod DLLs on-device (BCL redirects, overload/struct field bridges, IL2CPP guards) with disk caching (`.cecil_cache_v*`).
+- **AOT-Safe Harmony & MonoMod Bridge**: Maps desktop patches to JIT-free HybridCLR hook chains.
+- **Asset, Shader & Memory Guard**: Repairs PC shaders, bridges `AssetHelper`/`FsmUtil`/`BossKit`/`I18N`, and unloads finished HK boss scenes/bundles to prevent Android OOM crashes.
+- **Touch UI & Profiles**: Floating mod bubble, touch hotkeys, Pantheon boss skip, and `iris_profile.jsonc` sync.
 
-## What It Does
-* **Runtime Bytecode Rewriting (`CecilCore`)**: Transforms PC mod `.dll`s on-device (BCL redirects, overload bridges, signature fixes) and caches results in `.cecil_cache_v*` for fast boots.
-* **JIT-Free Harmony & MonoMod Bridge**: Maps desktop patches to AOT-safe HybridCLR hook chains with safe in-game unloading.
-* **Mobile Asset, Shader & Memory Guard**: Repairs PC shaders for mobile GPUs, protects against Android OOM kills, and bridges `AssetHelper`, `FsmUtil`, `BossKit`, `ModMenu`, and `I18N`.
-* **In-Game Touch UI & Profiles**: Adds a draggable floating bubble, touch-to-hotkey buttons, an in-game mod manager, and `iris_profile.jsonc` Thunderstore auto-sync.
+## Highlighted Tested Mods
+- **Bosses & Expansions**: Godhome (`HkCore` + `HkBossLoader`), *Third Acolyte*, *Bonemaster*, *Lost & Chained*, *Pale Automaton*, *Aeternal Everwatcher*, *Cousins of Void*, *Final Judge*, *Boss Rush*.
+- **Mechanics & QoL**: *Needleforge*, *Crest Wheel*, *Rebalanced Crests*, *Architect Pogo QoL*, *Tribe Tower Performance*.
 
-## Tested Mods (Highlights)
-* **Bosses & Expansions**: Godhome (`HkCore` + `HkBossLoader`), *Lost & Chained*, *Aeternal Everwatcher*, *Pale Automaton*, *Awakened Grand Mother Silk*, *Bonemaster*, *Final Judge*, *Rebellious Second Sentinel*, *Faded Phantom*, *Pharloom's Glory*, *Boss Rush*, *Pantheon of Pharloom*.
-* **Mechanics & QoL**: *Stylemeter*, *Shaman Dive Bind*, *Auric Aegis*, *Rebalanced Crests*, *Architect Pogo QoL*, *Double Enemies Mod*, *Stonks*, *Tribe Tower Performance*.
-
-## Build from Source (Linux)
-Requires [.NET SDK 8.0+](https://dotnet.microsoft.com/) and your mobile reference libraries in `~/Projects/lib/`:
+## Build (Linux)
+Requires [.NET SDK 8.0+](https://dotnet.microsoft.com/) and mobile reference DLLs in `~/Projects/lib/`:
 ```bash
 bash ~/Projects/build_silksong_mobile_api.bash
 ```
 Outputs to `~/Projects/SilksongMobileAPI/00_IRIS/`.
 
-## Logs & Bug Reports
-Pull logs from your device and check status on the [IRIS Dashboard](https://irislayer.bearblog.dev/):
+## Logs
 ```bash
 adb pull /storage/emulated/0/Android/data/com.game.silksong/files/BepInEx/LogOutput.log .
 adb pull /storage/emulated/0/Android/data/com.game.silksong/files/BepInEx/ModLog.log .
 ```
 
-## Pending Bugs to Solve (API)
-- [ ] **P2 softlock at Mantis Lord**
-- [ ] **Mantis Lord and Sisters of Battle not ending properly**
-- [ ] **Adding a button to skip boss in Pantheon**
+## Pending API Bugs
+- [ ] P2 softlock at Mantis Lords
+- [ ] Mantis Lords & Sisters of Battle not ending properly
+- [x] Pantheon boss skip button (`BossFixes.EnablePantheonBossSkip`)
 
-## License & Notice
-MIT License — contains only original compatibility bridge code and touch UI logic (no game binaries, proprietary assemblies, or copyrighted assets). *Hollow Knight: Silksong* belongs to Team Cherry; third-party mods belong to their respective authors.
+## License
+MIT — original compatibility bridge & UI code only (no game binaries or third-party mod assets).

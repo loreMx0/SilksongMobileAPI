@@ -1556,30 +1556,138 @@ namespace SilksongMobileAPI
             return null;
         }
 
+        private static int _bmMaterialScanSceneHandle = int.MinValue;
+        private static int _bmMaterialScanSceneCount = -1;
+        private static Material _fallbackSpriteAdditiveMat;
+        private static readonly HashSet<string> _bmLoggedMaterialLookups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        private static void LogBonemasterMaterialOnce(string requested, Material resolved, string source)
+        {
+            if (string.IsNullOrEmpty(requested)) return;
+            string key = requested + "|" + source;
+            if (!_bmLoggedMaterialLookups.Add(key)) return;
+            try
+            {
+                string matName = (resolved != null && (UnityEngine.Object)resolved != null) ? resolved.name : "null";
+                string shName = (resolved != null && (UnityEngine.Object)resolved != null && resolved.shader != null) ? resolved.shader.name : "null";
+                string texName = (resolved != null && (UnityEngine.Object)resolved != null && resolved.HasProperty("_MainTex") && resolved.mainTexture != null) ? resolved.mainTexture.name : "null";
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[BonemasterFindMaterial] '{requested}' -> mat='{matName}', shader='{shName}', tex='{texName}', src={source}");
+            }
+            catch { }
+        }
+
         public static Material BonemasterFindMaterial(string name)
         {
             if (string.IsNullOrEmpty(name)) name = "Particle_WhiteOrb";
 
             if (_bmMaterialCache.TryGetValue(name, out var cached) && cached != null && (UnityEngine.Object)cached != null)
+            {
+                LogBonemasterMaterialOnce(name, cached, "cache");
                 return cached;
+            }
 
             if (!_bmGlobalCachesPrewarmed)
             {
                 PrewarmBonemasterGlobalCaches();
                 if (_bmMaterialCache.TryGetValue(name, out cached) && cached != null)
+                {
+                    LogBonemasterMaterialOnce(name, cached, "prewarm");
                     return cached;
+                }
             }
 
             var indexedMat = TryLoadFromIndexedBundles(name, typeof(Material)) as Material;
             if (indexedMat != null)
             {
                 _bmMaterialCache[name] = indexedMat;
+                LogBonemasterMaterialOnce(name, indexedMat, "bundle");
                 return indexedMat;
             }
 
+            // Refresh live scene materials once per (activeScene.handle, sceneCount) change on cache miss
+            // so additive boss scenes (e.g. Hang_04 + Hang_04_boss) surface their materials cleanly.
+            int activeHandle = UnityEngine.SceneManagement.SceneManager.GetActiveScene().handle;
+            int sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+            if (_bmMaterialScanSceneHandle != activeHandle || _bmMaterialScanSceneCount != sceneCount)
+            {
+                _bmMaterialScanSceneHandle = activeHandle;
+                _bmMaterialScanSceneCount = sceneCount;
+                try
+                {
+                    var mats = UnityEngine.Resources.FindObjectsOfTypeAll<Material>();
+                    if (mats != null)
+                    {
+                        _bmCachedMaterialsArray = mats;
+                        for (int i = 0; i < mats.Length; i++)
+                        {
+                            var m = mats[i];
+                            if (m == null || string.IsNullOrEmpty(m.name)) continue;
+                            string mName = m.name;
+                            if (!_bmMaterialCache.TryGetValue(mName, out var existing) || existing == null ||
+                                (m.shader != null && m.shader.name != null && m.shader.name.IndexOf("Additive", StringComparison.OrdinalIgnoreCase) >= 0))
+                            {
+                                _bmMaterialCache[mName] = m;
+                            }
+                            if (_fallbackParticleMat == null && mName.StartsWith("Particle", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _fallbackParticleMat = m;
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                if (_bmMaterialCache.TryGetValue(name, out cached) && cached != null && (UnityEngine.Object)cached != null)
+                {
+                    LogBonemasterMaterialOnce(name, cached, "sceneScan");
+                    return cached;
+                }
+            }
+
+            // NEVER substitute a Particle material (e.g. Particle_WhiteOrb white circle) for SpriteRenderer materials ("Sprites-*").
+            // For "Sprites-Screen" / "Sprites-Additive" misses, use a textureless additive shader so light_effect_v02 blends softly
+            // instead of opaque-looking alpha circles; otherwise return null so Pictures.Make uses Sprites/Default.
+            if (name.StartsWith("Sprites", StringComparison.OrdinalIgnoreCase))
+            {
+                if (name.IndexOf("Screen", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    name.IndexOf("Add", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    if (_fallbackSpriteAdditiveMat == null || (UnityEngine.Object)_fallbackSpriteAdditiveMat == null)
+                    {
+                        try
+                        {
+                            Shader addSh = null;
+                            string[] addCandidates = new[] { "Legacy Shaders/Particles/Additive", "Mobile/Particles/Additive", "Sprites/Additive" };
+                            for (int si = 0; si < addCandidates.Length; si++)
+                            {
+                                var cand = Shader.Find(addCandidates[si]);
+                                if (cand != null && cand.isSupported) { addSh = cand; break; }
+                            }
+                            if (addSh != null)
+                            {
+                                _fallbackSpriteAdditiveMat = new Material(addSh)
+                                {
+                                    name = "IRIS_FallbackSpriteAdditive",
+                                    hideFlags = HideFlags.HideAndDontSave
+                                };
+                            }
+                        }
+                        catch { }
+                    }
+                    if (_fallbackSpriteAdditiveMat != null && (UnityEngine.Object)_fallbackSpriteAdditiveMat != null)
+                    {
+                        LogBonemasterMaterialOnce(name, _fallbackSpriteAdditiveMat, "spriteAdditiveFallback");
+                        return _fallbackSpriteAdditiveMat;
+                    }
+                }
+                LogBonemasterMaterialOnce(name, null, "spriteNullFallback");
+                return null;
+            }
+
+            // Return fallback particle material without permanently poisoning _bmMaterialCache[name] across future scenes.
             if (_fallbackParticleMat != null && (UnityEngine.Object)_fallbackParticleMat != null)
             {
-                _bmMaterialCache[name] = _fallbackParticleMat;
+                LogBonemasterMaterialOnce(name, _fallbackParticleMat, "particleFallback");
                 return _fallbackParticleMat;
             }
 
@@ -1588,13 +1696,14 @@ namespace SilksongMobileAPI
                 var sh = GetFallbackAndroidShader("Particle Additive");
                 if (sh != null)
                 {
-                    _fallbackParticleMat = new Material(sh) { name = name, hideFlags = HideFlags.HideAndDontSave };
-                    _bmMaterialCache[name] = _fallbackParticleMat;
+                    _fallbackParticleMat = new Material(sh) { name = "IRIS_FallbackParticle", hideFlags = HideFlags.HideAndDontSave };
+                    LogBonemasterMaterialOnce(name, _fallbackParticleMat, "particleShaderFallback");
                     return _fallbackParticleMat;
                 }
             }
             catch { }
 
+            LogBonemasterMaterialOnce(name, null, "missNull");
             return null;
         }
 
@@ -1659,6 +1768,9 @@ namespace SilksongMobileAPI
             }
         }
 
+        private static int _bmSpriteScanSceneHandle = int.MinValue;
+        private static int _bmSpriteScanSceneCount = -1;
+
         public static UnityEngine.Sprite BonemasterPicturesFind(string name, out string why)
         {
             why = "";
@@ -1667,6 +1779,37 @@ namespace SilksongMobileAPI
             if (_bmSpriteCache.TryGetValue(name, out var cachedSprite) && cachedSprite != null && (UnityEngine.Object)cachedSprite != null)
             {
                 return cachedSprite;
+            }
+
+            int activeHandle = UnityEngine.SceneManagement.SceneManager.GetActiveScene().handle;
+            int sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+            if (_bmSpriteScanSceneHandle != activeHandle || _bmSpriteScanSceneCount != sceneCount)
+            {
+                _bmSpriteScanSceneHandle = activeHandle;
+                _bmSpriteScanSceneCount = sceneCount;
+                _bmMissingSprites.Clear();
+                try
+                {
+                    var liveSprites = UnityEngine.Resources.FindObjectsOfTypeAll<Sprite>();
+                    if (liveSprites != null)
+                    {
+                        for (int i = 0; i < liveSprites.Length; i++)
+                        {
+                            var sp = liveSprites[i];
+                            if (sp != null && !string.IsNullOrEmpty(sp.name) &&
+                                (!_bmSpriteCache.TryGetValue(sp.name, out var existingSp) || existingSp == null || (UnityEngine.Object)existingSp == null))
+                            {
+                                _bmSpriteCache[sp.name] = sp;
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                if (_bmSpriteCache.TryGetValue(name, out cachedSprite) && cachedSprite != null && (UnityEngine.Object)cachedSprite != null)
+                {
+                    return cachedSprite;
+                }
             }
 
             if (_bmMissingSprites.Contains(name))
@@ -1896,13 +2039,17 @@ namespace SilksongMobileAPI
                             IndexAssetBundlePaths(loaded);
                             if (string.Equals(loaded.name, bundle, StringComparison.OrdinalIgnoreCase))
                             {
-                                var borrowType = Type.GetType("BossKit.World.Borrow, Bonemaster", false);
-                                if (borrowType != null)
+                                string[] borrowTypeNames = new[] { "BossKit.World.Borrow, Bonemaster", "ThirdAcolyte.World.Borrow, ThirdAcolyte" };
+                                for (int bi = 0; bi < borrowTypeNames.Length; bi++)
                                 {
-                                    var openedField = borrowType.GetField("opened", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
-                                    if (openedField?.GetValue(null) is IList<UnityEngine.AssetBundle> list)
+                                    var borrowType = Type.GetType(borrowTypeNames[bi], false);
+                                    if (borrowType != null)
                                     {
-                                        if (!list.Contains(loaded)) list.Add(loaded);
+                                        var openedField = borrowType.GetField("opened", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+                                        if (openedField?.GetValue(null) is IList<UnityEngine.AssetBundle> list)
+                                        {
+                                            if (!list.Contains(loaded)) list.Add(loaded);
+                                        }
                                     }
                                 }
                             }
@@ -2342,25 +2489,38 @@ namespace SilksongMobileAPI
             }
         }
 
-        private static Type _bmWantCachedType;
-        private static FieldInfo _bmWantNameField;
-        private static FieldInfo _bmWantGotField;
-        private static FieldInfo _bmWantKindField;
-        private static FieldInfo _bmWantBundleField;
-        private static FieldInfo _bmWantTriedField;
-        private static FieldInfo _bmWantAlsoField;
-
-        private static void EnsureBonemasterWantFields(Type wt)
+        private sealed class BorrowWantFields
         {
-            if (wt == null || ReferenceEquals(wt, _bmWantCachedType)) return;
-            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-            _bmWantNameField = wt.GetField("Name", flags);
-            _bmWantGotField = wt.GetField("Got", flags);
-            _bmWantKindField = wt.GetField("Kind", flags);
-            _bmWantBundleField = wt.GetField("Bundle", flags);
-            _bmWantTriedField = wt.GetField("Tried", flags);
-            _bmWantAlsoField = wt.GetField("Also", flags);
-            _bmWantCachedType = wt;
+            public FieldInfo Name;
+            public FieldInfo Got;
+            public FieldInfo Kind;
+            public FieldInfo Bundle;
+            public FieldInfo Tried;
+            public FieldInfo Also;
+        }
+
+        private static readonly Dictionary<Type, BorrowWantFields> _borrowWantFieldsByType = new Dictionary<Type, BorrowWantFields>();
+
+        private static BorrowWantFields GetBorrowWantFields(Type wt)
+        {
+            if (wt == null) return null;
+            lock (_borrowWantFieldsByType)
+            {
+                if (_borrowWantFieldsByType.TryGetValue(wt, out var cached))
+                    return cached;
+                const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                var wf = new BorrowWantFields
+                {
+                    Name = wt.GetField("Name", flags),
+                    Got = wt.GetField("Got", flags),
+                    Kind = wt.GetField("Kind", flags),
+                    Bundle = wt.GetField("Bundle", flags),
+                    Tried = wt.GetField("Tried", flags),
+                    Also = wt.GetField("Also", flags)
+                };
+                _borrowWantFieldsByType[wt] = wf;
+                return wf;
+            }
         }
 
         public static UnityEngine.Object BonemasterBorrowFindLoaded(object wantObj)
@@ -2368,11 +2528,11 @@ namespace SilksongMobileAPI
             if (wantObj == null) return null;
             try
             {
-                EnsureBonemasterWantFields(wantObj.GetType());
-                var nameField = _bmWantNameField;
-                var kindField = _bmWantKindField;
-                var bundleField = _bmWantBundleField;
-                var triedField = _bmWantTriedField;
+                var wf = GetBorrowWantFields(wantObj.GetType());
+                var nameField = wf?.Name;
+                var kindField = wf?.Kind;
+                var bundleField = wf?.Bundle;
+                var triedField = wf?.Tried;
 
                 string wantName = nameField?.GetValue(wantObj) as string ?? "";
                 Type wantKind = kindField?.GetValue(wantObj) as Type ?? typeof(UnityEngine.Object);
@@ -3493,10 +3653,10 @@ namespace SilksongMobileAPI
                 foreach (var w in wantsList)
                 {
                     if (w == null) continue;
-                    EnsureBonemasterWantFields(w.GetType());
-                    string b = _bmWantBundleField?.GetValue(w) as string;
+                    var wf = GetBorrowWantFields(w.GetType());
+                    string b = wf?.Bundle?.GetValue(w) as string;
                     if (!string.IsNullOrEmpty(b)) requestedBundles.Add(b);
-                    if (_bmWantAlsoField?.GetValue(w) is string[] alsoArr)
+                    if (wf?.Also?.GetValue(w) is string[] alsoArr)
                     {
                         for (int i = 0; i < alsoArr.Length; i++)
                         {
@@ -3616,12 +3776,12 @@ namespace SilksongMobileAPI
                 {
                     if (w == null) continue;
                     totalWants++;
-                    EnsureBonemasterWantFields(w.GetType());
-                    var nF = _bmWantNameField;
-                    var gF = _bmWantGotField;
-                    var kF = _bmWantKindField;
-                    var bF = _bmWantBundleField;
-                    var tF = _bmWantTriedField;
+                    var wf = GetBorrowWantFields(w.GetType());
+                    var nF = wf?.Name;
+                    var gF = wf?.Got;
+                    var kF = wf?.Kind;
+                    var bF = wf?.Bundle;
+                    var tF = wf?.Tried;
 
                     string wName = nF?.GetValue(w) as string;
                     Type wKind = kF?.GetValue(w) as Type ?? typeof(UnityEngine.Object);
@@ -3711,6 +3871,337 @@ namespace SilksongMobileAPI
             }
 
             SilksongMobileAPIPlugin.LogDiagnosticInfo($"[AssetHelperBridge] Preloaded {resolvedWants}/{totalWants} BossKit Borrow wants & {_bmBundleAssetPathIndex.Count} bundle asset keys at loading screen.");
+        }
+
+        private static bool _thirdAcolyteShelfPreloading;
+
+        public static IEnumerator CoEnsureThirdAcolyteShelfPreloaded()
+        {
+            if (SilksongMobileAPIPlugin.CfgEnableThirdAcolyteBridge != null && !SilksongMobileAPIPlugin.CfgEnableThirdAcolyteBridge.Value)
+                yield break;
+            if (_thirdAcolyteShelfPreloading) yield break;
+            _thirdAcolyteShelfPreloading = true;
+
+            Assembly taAsm = null;
+            try
+            {
+                foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (a != null && string.Equals(a.GetName().Name, "ThirdAcolyte", StringComparison.OrdinalIgnoreCase))
+                    {
+                        taAsm = a;
+                        break;
+                    }
+                }
+            }
+            catch { }
+            if (taAsm == null)
+            {
+                _thirdAcolyteShelfPreloading = false;
+                yield break;
+            }
+
+            try
+            {
+                var shelfType = taAsm.GetType("ThirdAcolyte.World.Shelf", false);
+                bool alreadyReady = false;
+                if (shelfType != null)
+                {
+                    var readyProp = shelfType.GetProperty("Ready", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (readyProp != null && readyProp.GetValue(null) is bool bReady)
+                        alreadyReady = bReady;
+                }
+
+                if (!alreadyReady && shelfType != null)
+                {
+                    ModPreloaderScreen.StatusText = "Preloading Third Acolyte (Song Reed Grand)...";
+                    string[] candidateRooms = new[] { "Hang_07", "Song_25" };
+                    for (int ri = 0; ri < candidateRooms.Length && !alreadyReady; ri++)
+                    {
+                        string room = candidateRooms[ri];
+                        string sceneKey = "Scenes/" + room;
+
+                        // Hold room dependencies open so Grand Reed keeps its effect animations
+                        AsyncOperationHandle<IList<IResourceLocation>> depFind = default;
+                        bool depFindOk = false;
+                        try
+                        {
+                            depFind = Addressables.LoadResourceLocationsAsync(sceneKey, null);
+                            depFindOk = depFind.IsValid();
+                        }
+                        catch { }
+                        if (depFindOk)
+                        {
+                            yield return depFind;
+                            IList<IResourceLocation> deps = null;
+                            if (depFind.Status == AsyncOperationStatus.Succeeded && depFind.Result != null && depFind.Result.Count > 0 && depFind.Result[0].HasDependencies)
+                                deps = depFind.Result[0].Dependencies;
+
+                            if (deps != null)
+                            {
+                                AsyncOperationHandle<IList<IAssetBundleResource>> depFiles = default;
+                                bool depFilesOk = false;
+                                try
+                                {
+                                    depFiles = Addressables.ResourceManager.ProvideResources<IAssetBundleResource>(deps, null);
+                                    depFilesOk = depFiles.IsValid();
+                                }
+                                catch { }
+                                if (depFilesOk)
+                                {
+                                    yield return depFiles;
+                                    if (depFiles.Status == AsyncOperationStatus.Succeeded)
+                                    {
+                                        _pinnedBonemasterBundleHandles.Add(depFiles);
+                                        try
+                                        {
+                                            var heldFi = shelfType.GetField("held", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+                                            if (heldFi?.GetValue(null) is HashSet<string> heldSet)
+                                                heldSet.Add(room);
+                                        }
+                                        catch { }
+                                    }
+                                }
+                            }
+                            try { if (depFind.IsValid()) Addressables.Release(depFind); } catch { }
+                        }
+
+                        // Load candidate scene additively, clone Song Reed Grand onto inactive ThirdAcolyte Shelf, then unload
+                        SetAllRepackersExtracting(true, room);
+                        try
+                        {
+                            AsyncOperationHandle<SceneInstance> loadHandle = default;
+                            bool startedLoad = false;
+                            try
+                            {
+                                loadHandle = Addressables.LoadSceneAsync(sceneKey, LoadSceneMode.Additive, true, 100);
+                                startedLoad = loadHandle.IsValid();
+                            }
+                            catch { }
+
+                            if (!startedLoad) continue;
+                            yield return loadHandle;
+
+                            if (loadHandle.Status == AsyncOperationStatus.Succeeded)
+                            {
+                                var loadedScene = loadHandle.Result.Scene;
+                                if (loadedScene.IsValid() && loadedScene.isLoaded)
+                                {
+                                    try
+                                    {
+                                        var roots = loadedScene.GetRootGameObjects();
+                                        GameObject foundReed = null;
+                                        for (int r = 0; r < roots.Length && foundReed == null; r++)
+                                        {
+                                            if (roots[r] == null) continue;
+                                            var hms = roots[r].GetComponentsInChildren<HealthManager>(true);
+                                            if (hms == null) continue;
+                                            for (int hi = 0; hi < hms.Length; hi++)
+                                            {
+                                                if (hms[hi] != null && hms[hi].gameObject != null &&
+                                                    string.Equals(hms[hi].gameObject.name, "Song Reed Grand", StringComparison.Ordinal))
+                                                {
+                                                    foundReed = hms[hi].gameObject;
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+                                        if (foundReed != null)
+                                        {
+                                            Transform shelfRoot = null;
+                                            var rootProp = shelfType.GetProperty("ShelfRoot", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+                                            if (rootProp != null) shelfRoot = rootProp.GetValue(null) as Transform;
+                                            if (shelfRoot == null)
+                                            {
+                                                var go = new GameObject("ThirdAcolyte Shelf");
+                                                go.SetActive(false);
+                                                UnityEngine.Object.DontDestroyOnLoad(go);
+                                                shelfRoot = go.transform;
+                                            }
+                                            else if (shelfRoot.gameObject.activeSelf)
+                                            {
+                                                shelfRoot.gameObject.SetActive(false);
+                                            }
+
+                                            PinAllAssetsOnHierarchy(foundReed);
+                                            var clone = UnityEngine.Object.Instantiate(foundReed, shelfRoot);
+                                            clone.name = "Song Reed Grand";
+                                            clone.SetActive(true);
+                                            RestoreTemplateComponentsEnabled(clone);
+                                            PinAllAssetsOnHierarchy(clone);
+
+                                            var grandReedProp = shelfType.GetProperty("GrandReed", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                                            if (grandReedProp != null && grandReedProp.GetSetMethod(true) != null)
+                                                grandReedProp.GetSetMethod(true).Invoke(null, new object[] { clone });
+                                            else
+                                                shelfType.GetField("<GrandReed>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic)?.SetValue(null, clone);
+
+                                            alreadyReady = true;
+                                            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[ThirdAcolyteBridge] Cloned 'Song Reed Grand' from {sceneKey} onto ThirdAcolyte Shelf!");
+                                        }
+
+                                        for (int r = 0; r < roots.Length; r++)
+                                        {
+                                            if (roots[r] != null) roots[r].SetActive(false);
+                                        }
+                                    }
+                                    catch (Exception exClone)
+                                    {
+                                        SilksongMobileAPIPlugin.LogDiagnosticWarn($"[ThirdAcolyteBridge] Shelf clone warning ({sceneKey}): {exClone.Message}");
+                                    }
+                                }
+
+                                yield return null;
+                                AsyncOperationHandle<SceneInstance> unloadHandle = default;
+                                bool startedUnload = false;
+                                try
+                                {
+                                    unloadHandle = Addressables.UnloadSceneAsync(loadHandle, true);
+                                    startedUnload = unloadHandle.IsValid();
+                                }
+                                catch { }
+                                if (startedUnload) yield return unloadHandle;
+                            }
+                        }
+                        finally
+                        {
+                            SetAllRepackersExtracting(false, string.Empty);
+                        }
+                    }
+                }
+
+                yield return CoOpenAndPreloadAllThirdAcolyteBorrowWants(taAsm);
+            }
+            finally
+            {
+                _thirdAcolyteShelfPreloading = false;
+            }
+        }
+
+        private static IEnumerator CoOpenAndPreloadAllThirdAcolyteBorrowWants(Assembly taAsm)
+        {
+            if (taAsm == null) yield break;
+            ModPreloaderScreen.StatusText = "Preloading Third Acolyte Asset Bundles...";
+
+            var borrowType = taAsm.GetType("ThirdAcolyte.World.Borrow", false);
+            if (borrowType == null) yield break;
+
+            var wantsList = borrowType.GetField("wants", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)?.GetValue(null) as System.Collections.IList;
+            var openedList = borrowType.GetField("opened", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)?.GetValue(null) as IList<UnityEngine.AssetBundle>;
+
+            var requestedBundles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "herodynamic_assets_all",
+                "herocollections_assets_shared",
+                "sharedeffects_assets_all",
+                "tk2danimations_assets_areasong",
+                "tk2dcollections_assets_areasong"
+            };
+
+            if (wantsList != null)
+            {
+                for (int i = 0; i < wantsList.Count; i++)
+                {
+                    var w = wantsList[i];
+                    if (w == null) continue;
+                    var wf = GetBorrowWantFields(w.GetType());
+                    string b = wf?.Bundle?.GetValue(w) as string;
+                    if (!string.IsNullOrEmpty(b)) requestedBundles.Add(b.TrimEnd('_'));
+                    if (wf?.Also?.GetValue(w) is string[] alsoArr)
+                    {
+                        for (int ai = 0; ai < alsoArr.Length; ai++)
+                            if (!string.IsNullOrEmpty(alsoArr[ai])) requestedBundles.Add(alsoArr[ai].TrimEnd('_'));
+                    }
+                }
+            }
+
+            var toOpenLocs = new List<IResourceLocation>();
+            try
+            {
+                foreach (var locator in Addressables.ResourceLocators)
+                {
+                    if (locator == null) continue;
+                    foreach (var keyObj in locator.Keys)
+                    {
+                        if (!(keyObj is string catalogKey)) continue;
+                        bool matched = false;
+                        foreach (var req in requestedBundles)
+                        {
+                            if (BonemasterCatalogKeyIndexOf(catalogKey, req, StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                matched = true;
+                                break;
+                            }
+                        }
+                        if (!matched) continue;
+                        if (locator.Locate(catalogKey, typeof(IAssetBundleResource), out var locs) && locs != null)
+                        {
+                            for (int li = 0; li < locs.Count; li++)
+                                if (locs[li] != null && !toOpenLocs.Contains(locs[li])) toOpenLocs.Add(locs[li]);
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            if (toOpenLocs.Count > 0)
+            {
+                AsyncOperationHandle<IList<IAssetBundleResource>> openHandle = default;
+                bool openStarted = false;
+                try
+                {
+                    openHandle = Addressables.ResourceManager.ProvideResources<IAssetBundleResource>(toOpenLocs, null);
+                    openStarted = openHandle.IsValid();
+                }
+                catch { }
+                if (openStarted)
+                {
+                    yield return openHandle;
+                    if (openHandle.Status == AsyncOperationStatus.Succeeded && openHandle.Result != null)
+                    {
+                        _pinnedBonemasterBundleHandles.Add(openHandle);
+                        foreach (var res in openHandle.Result)
+                        {
+                            var ab = res?.GetAssetBundle();
+                            if (ab != null && !ab.isStreamedSceneAssetBundle)
+                            {
+                                IndexAssetBundlePaths(ab);
+                                if (openedList != null && !openedList.Contains(ab)) openedList.Add(ab);
+                            }
+                        }
+                    }
+                }
+            }
+
+            PrewarmBonemasterGlobalCaches(forceRefreshArrays: true);
+
+            int totalWants = wantsList != null ? wantsList.Count : 0;
+            int resolvedWants = 0;
+            if (wantsList != null)
+            {
+                for (int i = 0; i < wantsList.Count; i++)
+                {
+                    var w = wantsList[i];
+                    if (w == null) continue;
+                    try
+                    {
+                        var wf = GetBorrowWantFields(w.GetType());
+                        var existing = wf?.Got?.GetValue(w) as UnityEngine.Object;
+                        if (existing == null)
+                        {
+                            var got = BonemasterBorrowFindLoaded(w);
+                            if (got != null) wf?.Got?.SetValue(w, got);
+                            existing = got;
+                        }
+                        wf?.Tried?.SetValue(w, true);
+                        if (existing != null) resolvedWants++;
+                    }
+                    catch { }
+                }
+            }
+
+            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[ThirdAcolyteBridge] Preloaded {resolvedWants}/{totalWants} ThirdAcolyte Borrow wants & {toOpenLocs.Count} Android bundle(s).");
         }
 
         private static IEnumerator CoEnsureBonemasterArenaActive()
@@ -12467,6 +12958,366 @@ namespace SilksongMobileAPI
             if (!string.Equals(SceneManager.GetActiveScene().name, sceneName, StringComparison.OrdinalIgnoreCase)) yield break;
             RestoreHkSceneHornetAudioSafe(sceneName);
             RestoreHornetPhysicsAndGravitySafe("hk-load-1.2s:" + sceneName, false);
+
+            // Unload finished HK boss scenes, bundles (Unload(true)), and unused textures once the new scene has fully loaded.
+            if (SilksongMobileAPIPlugin.CfgUnloadFinishedHkBosses == null || SilksongMobileAPIPlugin.CfgUnloadFinishedHkBosses.Value)
+            {
+                if (SilksongMobileAPIPlugin.Instance != null)
+                    SilksongMobileAPIPlugin.Instance.StartCoroutine(CoUnloadFinishedHkBossesAfterLoad(sceneName, token));
+            }
+
+            // Fix white-screen softlock in GG_Boss_Door_Entrance when Conversation Control enters Greet 0..4
+            // and waits forever for CONVO_FINISH (zero Update() polling; one-shot coroutine only for GG_Boss_Door_Entrance).
+            if (string.Equals(sceneName, "GG_Boss_Door_Entrance", StringComparison.OrdinalIgnoreCase) &&
+                (SilksongMobileAPIPlugin.CfgFixPantheonEntranceWhiteScreen == null || SilksongMobileAPIPlugin.CfgFixPantheonEntranceWhiteScreen.Value))
+            {
+                yield return new WaitForSeconds(1.8f);
+                if (token != _hkAudioRestoreToken) yield break;
+                if (!string.Equals(SceneManager.GetActiveScene().name, "GG_Boss_Door_Entrance", StringComparison.OrdinalIgnoreCase)) yield break;
+
+                PlayMakerFSM convFsm = FindConversationControlInActiveScene();
+                if (convFsm != null)
+                {
+                    string st = convFsm.ActiveStateName ?? "";
+                    if (st.StartsWith("Greet", StringComparison.OrdinalIgnoreCase))
+                    {
+                        SilksongMobileAPIPlugin.LogDiagnosticWarn($"[PantheonEntranceFix] GG_Boss_Door_Entrance stalled in '{st}' at 3.0s -> sending CONVO_FINISH.");
+                        try { convFsm.SendEvent("CONVO_FINISH"); } catch { }
+                    }
+                    else if (!string.Equals(st, "Talk Finish", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Give Pause/Atmos/Init/Text. a brief moment to reach Greet, then advance cleanly
+                        yield return new WaitForSeconds(2.5f);
+                        if (token != _hkAudioRestoreToken) yield break;
+                        if (!string.Equals(SceneManager.GetActiveScene().name, "GG_Boss_Door_Entrance", StringComparison.OrdinalIgnoreCase)) yield break;
+                        st = convFsm != null ? (convFsm.ActiveStateName ?? "") : "";
+                        if (st.StartsWith("Greet", StringComparison.OrdinalIgnoreCase))
+                        {
+                            SilksongMobileAPIPlugin.LogDiagnosticWarn($"[PantheonEntranceFix] GG_Boss_Door_Entrance stalled in '{st}' at 5.5s -> sending CONVO_FINISH.");
+                            try { convFsm.SendEvent("CONVO_FINISH"); } catch { }
+                        }
+                        else if (convFsm != null && convFsm.Fsm != null && !string.Equals(st, "Talk Finish", StringComparison.OrdinalIgnoreCase))
+                        {
+                            SilksongMobileAPIPlugin.LogDiagnosticWarn($"[PantheonEntranceFix] Advancing stuck Conversation Control from '{st}' -> 'Talk Finish'.");
+                            try { convFsm.Fsm.SetState("Talk Finish"); } catch { }
+                        }
+                    }
+
+                    // If still in GG_Boss_Door_Entrance 3.5s later, force Talk Finish and yield before direct fallback
+                    yield return new WaitForSeconds(3.5f);
+                    if (token != _hkAudioRestoreToken) yield break;
+                    if (!string.Equals(SceneManager.GetActiveScene().name, "GG_Boss_Door_Entrance", StringComparison.OrdinalIgnoreCase)) yield break;
+
+                    string finalState = convFsm != null ? (convFsm.ActiveStateName ?? "") : "";
+                    if (convFsm != null && convFsm.Fsm != null && !string.Equals(finalState, "Talk Finish", StringComparison.OrdinalIgnoreCase))
+                    {
+                        SilksongMobileAPIPlugin.LogDiagnosticWarn($"[PantheonEntranceFix] Forcing Conversation Control from '{finalState}' -> 'Talk Finish'.");
+                        try { convFsm.Fsm.SetState("Talk Finish"); } catch { }
+                        yield return new WaitForSeconds(1.5f);
+                        if (token != _hkAudioRestoreToken) yield break;
+                        if (!string.Equals(SceneManager.GetActiveScene().name, "GG_Boss_Door_Entrance", StringComparison.OrdinalIgnoreCase)) yield break;
+                    }
+                }
+                else
+                {
+                    yield return new WaitForSeconds(2.5f);
+                    if (token != _hkAudioRestoreToken) yield break;
+                    if (!string.Equals(SceneManager.GetActiveScene().name, "GG_Boss_Door_Entrance", StringComparison.OrdinalIgnoreCase)) yield break;
+                }
+
+                // Final direct fallback if Talk Finish did not start a transition (never double-fires if IsInSceneTransition is true)
+                try
+                {
+                    var gm = GameManager.instance;
+                    if (gm != null && !gm.IsInSceneTransition)
+                    {
+                        string toScene = null;
+                        if (convFsm != null && convFsm.FsmVariables != null)
+                        {
+                            var toVar = convFsm.FsmVariables.FindFsmString("To Scene");
+                            if (toVar != null) toScene = toVar.Value;
+                        }
+                        if (string.IsNullOrEmpty(toScene) && StaticVariableList.Exists("firstBossScene"))
+                        {
+                            toScene = StaticVariableList.GetValue<string>("firstBossScene");
+                        }
+                        if (!string.IsNullOrEmpty(toScene))
+                        {
+                            SilksongMobileAPIPlugin.LogDiagnosticWarn($"[PantheonEntranceFix] Direct transition fallback from GG_Boss_Door_Entrance -> '{toScene}'.");
+                            gm.BeginSceneTransition(new GameManager.SceneLoadInfo
+                            {
+                                SceneName = toScene,
+                                EntryGateName = "door_dreamEnter",
+                                EntryDelay = 0f,
+                                PreventCameraFadeOut = true,
+                                WaitForSceneTransitionCameraFade = false
+                            });
+                        }
+                    }
+                }
+                catch (Exception exEnt)
+                {
+                    SilksongMobileAPIPlugin.LogDiagnosticWarn($"[PantheonEntranceFix] Fallback error: {exEnt.Message}");
+                }
+            }
+
+            // Fix GG_Grimm Phase 1 stall in Native Pantheons, Hall of Gods Statues, and Journal fights:
+            // Grimm Scene/FSM stalls at "Grimm Appear 4" and Grimm Boss/Control stalls at "HP Scale".
+            if (string.Equals(sceneName, "GG_Grimm", StringComparison.OrdinalIgnoreCase) &&
+                (SilksongMobileAPIPlugin.CfgFixGrimmPhase1Stall == null || SilksongMobileAPIPlugin.CfgFixGrimmPhase1Stall.Value))
+            {
+                yield return new WaitForSeconds(1.5f);
+                if (token != _hkAudioRestoreToken) yield break;
+                if (!string.Equals(SceneManager.GetActiveScene().name, "GG_Grimm", StringComparison.OrdinalIgnoreCase)) yield break;
+
+                try
+                {
+                    var active = SceneManager.GetActiveScene();
+                    if (active.IsValid() && active.isLoaded)
+                    {
+                        var roots = active.GetRootGameObjects();
+                        if (roots != null)
+                        {
+                            bool advancedAppear = false;
+                            for (int r = 0; r < roots.Length && !advancedAppear; r++)
+                            {
+                                if (roots[r] == null) continue;
+                                var fsms = roots[r].GetComponentsInChildren<PlayMakerFSM>(true);
+                                if (fsms == null) continue;
+                                for (int i = 0; i < fsms.Length; i++)
+                                {
+                                    var f = fsms[i];
+                                    if (f != null && f.gameObject != null && f.gameObject.activeInHierarchy &&
+                                        string.Equals(f.gameObject.name, "Grimm Scene", StringComparison.OrdinalIgnoreCase) &&
+                                        string.Equals(f.ActiveStateName, "Grimm Appear 4", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        f.SendEvent("FINISHED");
+                                        SilksongMobileAPIPlugin.LogDiagnosticWarn("[GrimmPhase1Fix] Advanced stuck Grimm Scene/FSM ('Grimm Appear 4' -> 'Battle Start').");
+                                        advancedAppear = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception exG1)
+                {
+                    SilksongMobileAPIPlugin.LogDiagnosticWarn($"[GrimmPhase1Fix] Grimm Scene unstick error: {exG1.Message}");
+                }
+
+                yield return new WaitForSeconds(0.35f);
+                if (token != _hkAudioRestoreToken) yield break;
+                if (!string.Equals(SceneManager.GetActiveScene().name, "GG_Grimm", StringComparison.OrdinalIgnoreCase)) yield break;
+
+                try
+                {
+                    var active = SceneManager.GetActiveScene();
+                    if (active.IsValid() && active.isLoaded)
+                    {
+                        var roots = active.GetRootGameObjects();
+                        if (roots != null)
+                        {
+                            string tierEv = Mathf.Clamp((PlayerData.instance?.nailUpgrades ?? 0) + 1, 1, 5).ToString();
+                            bool advancedHp = false;
+                            for (int r = 0; r < roots.Length && !advancedHp; r++)
+                            {
+                                if (roots[r] == null) continue;
+                                var fsms = roots[r].GetComponentsInChildren<PlayMakerFSM>(true);
+                                if (fsms == null) continue;
+                                for (int i = 0; i < fsms.Length; i++)
+                                {
+                                    var f = fsms[i];
+                                    if (f != null && f.gameObject != null && f.gameObject.activeInHierarchy &&
+                                        string.Equals(f.gameObject.name, "Grimm Boss", StringComparison.OrdinalIgnoreCase) &&
+                                        string.Equals(f.FsmName, "Control", StringComparison.OrdinalIgnoreCase) &&
+                                        string.Equals(f.ActiveStateName, "HP Scale", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        f.SendEvent(tierEv);
+                                        SilksongMobileAPIPlugin.LogDiagnosticWarn($"[GrimmPhase1Fix] Advanced stuck Grimm Boss/Control ('HP Scale' -> Set {tierEv}) to start Phase 1.");
+                                        advancedHp = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception exG2)
+                {
+                    SilksongMobileAPIPlugin.LogDiagnosticWarn($"[GrimmPhase1Fix] Grimm Boss unstick error: {exG2.Message}");
+                }
+            }
+        }
+
+        private static FieldInfo _hkScenesLoadedField;
+        private static bool _hkScenesLoadedFieldResolved;
+
+        private static Dictionary<string, AssetBundle> GetHkScenesLoadedBundleMap()
+        {
+            if (!_hkScenesLoadedFieldResolved)
+            {
+                try
+                {
+                    var hkScenesType = HarmonyLib.AccessTools.TypeByName("HkCore.HkScenes");
+                    if (hkScenesType != null)
+                    {
+                        _hkScenesLoadedField = hkScenesType.GetField("loaded", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+                        _hkScenesLoadedFieldResolved = true;
+                    }
+                }
+                catch { }
+            }
+            if (_hkScenesLoadedField == null) return null;
+            try { return _hkScenesLoadedField.GetValue(null) as Dictionary<string, AssetBundle>; }
+            catch { return null; }
+        }
+
+        private static IEnumerator CoUnloadFinishedHkBossesAfterLoad(string currentSceneName, int token)
+        {
+            // Wait briefly if a scene transition is still finishing so we only unload AFTER the new boss has completely loaded.
+            float waitStart = Time.realtimeSinceStartup;
+            while (GameManager.instance != null && GameManager.instance.IsInSceneTransition && Time.realtimeSinceStartup - waitStart < 5f)
+            {
+                yield return new WaitForSeconds(0.25f);
+                if (token != _hkAudioRestoreToken) yield break;
+            }
+            if (token != _hkAudioRestoreToken) yield break;
+            if (GameManager.instance != null && GameManager.instance.IsInSceneTransition) yield break;
+            if (!string.Equals(SceneManager.GetActiveScene().name, currentSceneName, StringComparison.OrdinalIgnoreCase)) yield break;
+
+            // Step 1: Unload any leftover finished GG_* Unity scenes that are not the current active scene.
+            var leftoverScenes = new List<Scene>();
+            try
+            {
+                int scCount = SceneManager.sceneCount;
+                for (int i = 0; i < scCount; i++)
+                {
+                    Scene sc = SceneManager.GetSceneAt(i);
+                    if (!sc.IsValid() || !sc.isLoaded) continue;
+                    string sName = sc.name ?? "";
+                    if (string.Equals(sName, currentSceneName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (sName.StartsWith("GG_", StringComparison.OrdinalIgnoreCase))
+                        leftoverScenes.Add(sc);
+                }
+            }
+            catch { }
+
+            int unloadedUnityScenes = 0;
+            for (int i = 0; i < leftoverScenes.Count; i++)
+            {
+                if (token != _hkAudioRestoreToken) yield break;
+                if (GameManager.instance != null && GameManager.instance.IsInSceneTransition) yield break;
+                AsyncOperation op = null;
+                try
+                {
+                    if (leftoverScenes[i].IsValid() && leftoverScenes[i].isLoaded)
+                        op = SceneManager.UnloadSceneAsync(leftoverScenes[i]);
+                }
+                catch { }
+                if (op != null)
+                {
+                    unloadedUnityScenes++;
+                    while (!op.isDone) yield return null;
+                    if (token != _hkAudioRestoreToken) yield break;
+                }
+            }
+            if (token != _hkAudioRestoreToken) yield break;
+            if (GameManager.instance != null && GameManager.instance.IsInSceneTransition) yield break;
+
+            // Step 2: Build set of all currently loaded or loading scene names so we NEVER unload an active/incoming scene bundle.
+            var activeSceneNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(currentSceneName)) activeSceneNames.Add(currentSceneName);
+            try
+            {
+                int scCount = SceneManager.sceneCount;
+                for (int i = 0; i < scCount; i++)
+                {
+                    Scene sc = SceneManager.GetSceneAt(i);
+                    if (sc.IsValid() && !string.IsNullOrEmpty(sc.name))
+                        activeSceneNames.Add(sc.name);
+                }
+            }
+            catch { }
+
+            // Step 3: Unload finished per-scene AssetBundles from HkCore.HkScenes.loaded using Unload(true)
+            // (never touches HkCore.HkScenes.common, shared, or shaders).
+            int unloadedBundles = 0;
+            var unloadedNames = new List<string>();
+            try
+            {
+                var loadedMap = GetHkScenesLoadedBundleMap();
+                if (loadedMap != null && loadedMap.Count > 0)
+                {
+                    var staleKeys = new List<string>();
+                    foreach (var kv in loadedMap)
+                    {
+                        string key = kv.Key;
+                        if (string.IsNullOrEmpty(key) || activeSceneNames.Contains(key)) continue;
+                        if (key.IndexOf("common", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            key.IndexOf("shared", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            key.IndexOf("shader", StringComparison.OrdinalIgnoreCase) >= 0)
+                            continue;
+                        staleKeys.Add(key);
+                    }
+                    for (int i = 0; i < staleKeys.Count; i++)
+                    {
+                        string k = staleKeys[i];
+                        if (loadedMap.TryGetValue(k, out AssetBundle bundle))
+                        {
+                            loadedMap.Remove(k);
+                            if (bundle != null)
+                            {
+                                try { bundle.Unload(true); } catch { }
+                            }
+                            unloadedBundles++;
+                            unloadedNames.Add(k);
+                        }
+                    }
+                }
+            }
+            catch (Exception exUnl)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[HkBossUnloader] Bundle unload warning: {exUnl.Message}");
+            }
+
+            // Step 4: Free unreferenced runtime downscaled textures & boss assets asynchronously.
+            if (unloadedUnityScenes > 0 || unloadedBundles > 0)
+            {
+                AsyncOperation unloadOp = null;
+                try { unloadOp = Resources.UnloadUnusedAssets(); } catch { }
+                if (unloadOp != null)
+                {
+                    while (!unloadOp.isDone) yield return null;
+                    if (token != _hkAudioRestoreToken) yield break;
+                }
+                try { GC.Collect(0, GCCollectionMode.Optimized); } catch { }
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[HkBossUnloader] Freed {unloadedBundles} finished HK bundle(s) [{string.Join(", ", unloadedNames)}] & {unloadedUnityScenes} leftover scene(s) after '{currentSceneName}' loaded (managedMB={GC.GetTotalMemory(false) / (1024 * 1024)}).");
+            }
+        }
+
+        private static PlayMakerFSM FindConversationControlInActiveScene()
+        {
+            try
+            {
+                var active = SceneManager.GetActiveScene();
+                if (!active.IsValid() || !active.isLoaded) return null;
+                var roots = active.GetRootGameObjects();
+                if (roots == null) return null;
+                for (int r = 0; r < roots.Length; r++)
+                {
+                    if (roots[r] == null) continue;
+                    var fsms = roots[r].GetComponentsInChildren<PlayMakerFSM>(true);
+                    if (fsms == null) continue;
+                    for (int i = 0; i < fsms.Length; i++)
+                    {
+                        if (fsms[i] != null && string.Equals(fsms[i].FsmName, "Conversation Control", StringComparison.OrdinalIgnoreCase))
+                            return fsms[i];
+                    }
+                }
+            }
+            catch { }
+            return null;
         }
 
         private static void EnsureHornetRoarObjectVariableSafe()
@@ -13400,6 +14251,66 @@ namespace SilksongMobileAPI
         {
             try
             {
+                // Pantheon low-RAM cleanup: force Unity to unload previous boss assets on every GG_* transition
+                // so 15+ consecutive Pantheon bosses do not accumulate in RAM and trigger Android LMK OOM kills.
+                if (info != null && (SilksongMobileAPIPlugin.CfgPantheonLowMemoryCleanup == null || SilksongMobileAPIPlugin.CfgPantheonLowMemoryCleanup.Value))
+                {
+                    string curScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name ?? "";
+                    string dstScene = info.SceneName ?? "";
+                    if (curScene.StartsWith("GG_", StringComparison.OrdinalIgnoreCase) ||
+                        dstScene.StartsWith("GG_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        info.AlwaysUnloadUnusedAssets = true;
+                    }
+                }
+
+                // Fix Pantheon completion infinite loading screen: BossDoorChallengeCompleteUI leaves GG_End_Sequence
+                // with SceneName = "" (empty dreamReturnScene) or "GG_Unlock" (no gg_unlock.bundle in HkBossLoader).
+                if (info != null && (SilksongMobileAPIPlugin.CfgFixPantheonEndSequenceReturn == null || SilksongMobileAPIPlugin.CfgFixPantheonEndSequenceReturn.Value))
+                {
+                    string activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+                    bool leavingEndSeq = string.Equals(activeScene, "GG_End_Sequence", StringComparison.OrdinalIgnoreCase);
+                    bool badTarget = string.IsNullOrEmpty(info.SceneName) || string.Equals(info.SceneName, "GG_Unlock", StringComparison.OrdinalIgnoreCase);
+                    if ((leavingEndSeq && badTarget) || string.Equals(info.SceneName, "GG_Unlock", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var pd = PlayerData.instance;
+                        string targetHub = "GG_Atrium";
+                        if (pd != null && (string.Equals(pd.nonLethalRespawnScene, "GG_Atrium", StringComparison.OrdinalIgnoreCase) ||
+                                           string.Equals(pd.nonLethalRespawnScene, "GG_Atrium_Roof", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            targetHub = pd.nonLethalRespawnScene;
+                        }
+                        else
+                        {
+                            string gateHint = !string.IsNullOrEmpty(info.EntryGateName) ? info.EntryGateName : (pd?.bossReturnEntryGate ?? string.Empty);
+                            if (gateHint.IndexOf("Roof", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                gateHint.IndexOf("Door_5", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                gateHint.IndexOf("Tier5", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                targetHub = "GG_Atrium_Roof";
+                            }
+                        }
+
+                        string origTarget = info.SceneName ?? "<empty>";
+                        info.SceneName = targetHub;
+                        info.SceneResourceLocation = null;
+                        if (pd != null) pd.dreamReturnScene = targetHub;
+                        if (string.IsNullOrEmpty(info.EntryGateName))
+                        {
+                            info.EntryGateName = (pd != null && !string.IsNullOrEmpty(pd.bossReturnEntryGate))
+                                ? pd.bossReturnEntryGate
+                                : "door_dreamEnter";
+                        }
+                        try
+                        {
+                            if (__instance != null)
+                                __instance.SaveGame((Action<bool>)null);
+                        }
+                        catch { }
+                        SilksongMobileAPIPlugin.LogDiagnosticInfo($"[PantheonEndFix] Redirected {activeScene} -> '{origTarget}' to '{targetHub}' (gate='{info.EntryGateName}') & saved completion.");
+                    }
+                }
+
                 bool returning = _directHkSessionActive || Time.realtimeSinceStartup < _directHkBenchReturnUntilRealtime;
                 if (!returning || info == null || string.IsNullOrEmpty(info.SceneName)) return true;
                 // When dying or exiting a direct-launched HK1 boss/pantheon, HkCore/Godhome tries to send Hornet to GG_Atrium or GG_Workshop (which OOM-kills 6 GB phones).
@@ -13512,6 +14423,78 @@ namespace SilksongMobileAPI
                 ReturnToSavedBenchFromDirectHk();
             }
             catch { ReturnToSavedBenchFromDirectHk(); }
+        }
+
+        private static float _lastPantheonSkipRealtime = -10f;
+
+        public static string GetPantheonSkipButtonLabel()
+        {
+            try
+            {
+                if (_directHkSessionActive && _activePantheonScenes != null && _activePantheonScenes.Length > 0)
+                {
+                    int cur = Mathf.Clamp(_activePantheonIndex + 1, 1, _activePantheonScenes.Length);
+                    return $"Skip Pantheon Boss ({cur}/{_activePantheonScenes.Length}) >>";
+                }
+                if (BossSequenceController.IsInSequence)
+                {
+                    return "Skip Pantheon Boss (Active) >>";
+                }
+            }
+            catch { }
+            return "Skip Pantheon Boss >>";
+        }
+
+        public static string SkipCurrentPantheonBoss(out bool didSkip)
+        {
+            didSkip = false;
+            try
+            {
+                if (SilksongMobileAPIPlugin.CfgEnablePantheonBossSkip != null && !SilksongMobileAPIPlugin.CfgEnablePantheonBossSkip.Value)
+                    return "Pantheon boss skip is disabled in config (BossFixes.EnablePantheonBossSkip).";
+
+                float now = Time.realtimeSinceStartup;
+                if (now - _lastPantheonSkipRealtime < 2.0f)
+                    return "Skip already in progress...";
+
+                // Path A: Journal / direct-launched Pantheon
+                if (_directHkSessionActive && _activePantheonScenes != null && _activePantheonScenes.Length > 0)
+                {
+                    _lastPantheonSkipRealtime = now;
+                    _directHkFightToken++;
+                    int curIdx = _activePantheonIndex;
+                    bool hasNext = curIdx >= 0 && curIdx + 1 < _activePantheonScenes.Length;
+                    string curBoss = (curIdx >= 0 && curIdx < _activePantheonScenes.Length) ? _activePantheonScenes[curIdx] : "current";
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[PantheonSkip] Direct Pantheon '{_activePantheonName}' skipping boss '{curBoss}' ({curIdx + 1}/{_activePantheonScenes.Length}).");
+                    AdvanceDirectHkPantheonOrReturnToBench();
+                    didSkip = true;
+                    return hasNext
+                        ? $"Skipped '{curBoss}' -> advancing to next Pantheon boss..."
+                        : $"Skipped final Pantheon boss '{curBoss}' -> returning to bench...";
+                }
+
+                // Path B: Native Godhome Door Pantheon
+                if (BossSequenceController.IsInSequence)
+                {
+                    var bsc = BossSceneController.Instance;
+                    if (bsc == null)
+                        return "Pantheon arena is still loading — try again in a moment.";
+
+                    _lastPantheonSkipRealtime = now;
+                    string activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[PantheonSkip] Native Pantheon skipping boss in '{activeScene}' via BossSceneController.EndBossScene().");
+                    bsc.EndBossScene();
+                    didSkip = true;
+                    return $"Skipping Pantheon boss ('{activeScene}') -> moving to next boss...";
+                }
+
+                return "Not currently in a Pantheon fight (only works during a Pantheon run).";
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[PantheonSkip] Failed to skip Pantheon boss: {ex.Message}");
+                return $"Skip failed: {ex.Message}";
+            }
         }
 
         private static IEnumerator WaitAndFinishDirectHkAfterBossesDead(int token, string sceneName)

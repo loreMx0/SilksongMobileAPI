@@ -232,15 +232,15 @@ namespace SilksongMobileAPI.CecilCore
                     {
                         try
                         {
-                            foreach (var oldName in new[] { ".cecil_cache_v2428", ".cecil_cache_v2429", ".cecil_cache_v2430", ".cecil_cache_v2432", ".cecil_cache_v250", ".cecil_cache_v251", ".cecil_cache_v251a", ".cecil_cache_v252", ".cecil_cache_v255", ".cecil_cache_v257", ".cecil_cache_v258", ".cecil_cache_v259", ".cecil_cache_v260", ".cecil_cache_v261", ".cecil_cache_v262", ".cecil_cache_v263", ".cecil_cache_v264", ".cecil_cache_v265", ".cecil_cache_v266", ".cecil_cache_v267", ".cecil_cache_v268", ".cecil_cache_v269", ".cecil_cache_v275", ".cecil_cache_v280", ".cecil_cache_v281", ".cecil_cache_v282", ".cecil_cache_v283", ".cecil_cache_v284", ".cecil_cache_v285", ".cecil_cache_v286", ".cecil_cache_v287", ".cecil_cache_v289", ".cecil_cache_v290", ".cecil_cache_v292", ".cecil_cache_v293", ".cecil_cache_v294", ".cecil_cache_v295", ".cecil_cache_v296", ".cecil_cache_v2961", ".cecil_cache_v2962", ".cecil_cache_v2963", ".cecil_cache_v2964", ".cecil_cache_v2965", ".cecil_cache_v2966", ".cecil_cache_v2967", ".cecil_cache_v2968", ".cecil_cache_v29614", ".cecil_cache_v29615", ".cecil_cache_v29618", ".cecil_cache_v29620", ".cecil_cache_v29625", ".cecil_cache_v29626", ".cecil_cache_v2983", ".cecil_cache_v2984" })
+                            foreach (var oldName in new[] { ".cecil_cache_v2428", ".cecil_cache_v2429", ".cecil_cache_v2430", ".cecil_cache_v2432", ".cecil_cache_v250", ".cecil_cache_v251", ".cecil_cache_v251a", ".cecil_cache_v252", ".cecil_cache_v255", ".cecil_cache_v257", ".cecil_cache_v258", ".cecil_cache_v259", ".cecil_cache_v260", ".cecil_cache_v261", ".cecil_cache_v262", ".cecil_cache_v263", ".cecil_cache_v264", ".cecil_cache_v265", ".cecil_cache_v266", ".cecil_cache_v267", ".cecil_cache_v268", ".cecil_cache_v269", ".cecil_cache_v275", ".cecil_cache_v280", ".cecil_cache_v281", ".cecil_cache_v282", ".cecil_cache_v283", ".cecil_cache_v284", ".cecil_cache_v285", ".cecil_cache_v286", ".cecil_cache_v287", ".cecil_cache_v289", ".cecil_cache_v290", ".cecil_cache_v292", ".cecil_cache_v293", ".cecil_cache_v294", ".cecil_cache_v295", ".cecil_cache_v296", ".cecil_cache_v2961", ".cecil_cache_v2962", ".cecil_cache_v2963", ".cecil_cache_v2964", ".cecil_cache_v2965", ".cecil_cache_v2966", ".cecil_cache_v2967", ".cecil_cache_v2968", ".cecil_cache_v29614", ".cecil_cache_v29615", ".cecil_cache_v29618", ".cecil_cache_v29620", ".cecil_cache_v29625", ".cecil_cache_v29626", ".cecil_cache_v2983", ".cecil_cache_v2984", ".cecil_cache_v2986" })
                             {
-                                if (oldName == ".cecil_cache_v2986") continue;
+                                if (oldName == ".cecil_cache_v29832") continue;
                                 string oldP = Path.Combine(parentDir, oldName);
                                 if (Directory.Exists(oldP)) Directory.Delete(oldP, true);
                             }
                         }
                         catch { }
-                        cacheDir = Path.Combine(parentDir, ".cecil_cache_v2986");
+                        cacheDir = Path.Combine(parentDir, ".cecil_cache_v29832");
                         ulong fnv = ComputeFnv1a64(rawBytes);
                         string modeTag = preAlreadyLoaded ? "rt" : "std";
                         cachePrefix = Path.Combine(cacheDir, $"{shortFileName}_{rawBytes.Length}_{fnv:X16}_{modeTag}");
@@ -4704,8 +4704,10 @@ namespace SilksongMobileAPI.CecilCore
                     //     - Settings.Bind: set default Shade to "Stock" and SharpDrawings to false (0)
                     //     - Hitches: neutralize Update (stops 50ms Hitch timer)
                     if (modName.IndexOf("Bonemaster", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        modName.IndexOf("ThirdAcolyte", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         td.FullName.StartsWith("BossKit.", StringComparison.Ordinal) ||
                         td.FullName.StartsWith("Bonemaster.", StringComparison.Ordinal) ||
+                        td.FullName.StartsWith("ThirdAcolyte.", StringComparison.Ordinal) ||
                         td.FullName.StartsWith("HkCore.", StringComparison.Ordinal) ||
                         td.FullName.StartsWith("HkBossLoader.", StringComparison.Ordinal))
                     {
@@ -4819,7 +4821,7 @@ namespace SilksongMobileAPI.CecilCore
                             il.Emit(OpCodes.Ret);
                             count++;
                         }
-                        else if (td.FullName == "BossKit.Core.Spray" && md.Name == "BodyPoints")
+                        else if ((td.FullName == "BossKit.Core.Spray" || td.FullName == "ThirdAcolyte.Core.Spray") && md.Name == "BodyPoints")
                         {
                             if (md.ReturnType is ArrayType at)
                             {
@@ -4832,7 +4834,17 @@ namespace SilksongMobileAPI.CecilCore
                                 count++;
                             }
                         }
-                        else if (td.FullName == "BossKit.Core.Recolour" && (md.Name == ".cctor" || md.Name == "Baked" || md.Name == "LateUpdate"))
+                        else if (td.FullName == "ThirdAcolyte.Boss.Moves.ChoirBurst/Choir" && md.Name == "Transient" && md.ReturnType.FullName == "System.Single")
+                        {
+                            // Neutralize AudioClip.GetData() on compressed Android clips (returns ChoirBurst's own 0.69f fallback cleanly with zero allocation/error).
+                            md.Body.Instructions.Clear();
+                            md.Body.Variables.Clear();
+                            md.Body.ExceptionHandlers.Clear();
+                            il.Emit(OpCodes.Ldc_R4, 0.69f);
+                            il.Emit(OpCodes.Ret);
+                            count++;
+                        }
+                        else if ((td.FullName == "BossKit.Core.Recolour" || td.FullName == "ThirdAcolyte.Core.Recolour") && (md.Name == ".cctor" || md.Name == "Baked" || md.Name == "LateUpdate"))
                         {
                             md.Body.Instructions.Clear();
                             md.Body.Variables.Clear();
@@ -5210,7 +5222,7 @@ namespace SilksongMobileAPI.CecilCore
                             il.Emit(OpCodes.Ret);
                             count++;
                         }
-                        else if (td.FullName == "BossKit.Core.Clock/Hitches" && md.Name == "Update")
+                        else if ((td.FullName == "BossKit.Core.Clock/Hitches" || td.FullName == "ThirdAcolyte.Core.Clock/Hitches") && md.Name == "Update")
                         {
                             md.Body.Instructions.Clear();
                             md.Body.Variables.Clear();
@@ -5218,7 +5230,7 @@ namespace SilksongMobileAPI.CecilCore
                             il.Emit(OpCodes.Ret);
                             count++;
                         }
-                        else if (td.FullName == "BossKit.World.Borrow" && md.Name == "FindLoaded" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
+                        else if ((td.FullName == "BossKit.World.Borrow" || td.FullName == "ThirdAcolyte.World.Borrow") && md.Name == "FindLoaded" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
                         {
                             var findLoadedMi = _assetHelperBridgeType.GetMethod("BonemasterBorrowFindLoaded", BindingFlags.Static | BindingFlags.Public);
                             if (findLoadedMi != null)
@@ -5232,7 +5244,7 @@ namespace SilksongMobileAPI.CecilCore
                                 count++;
                             }
                         }
-                        else if (td.FullName == "BossKit.World.Borrow" && md.Name == "Open" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
+                        else if ((td.FullName == "BossKit.World.Borrow" || td.FullName == "ThirdAcolyte.World.Borrow") && md.Name == "Open" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
                         {
                             var openFastMi = _assetHelperBridgeType.GetMethod("BonemasterBorrowOpenFast", BindingFlags.Static | BindingFlags.Public);
                             if (openFastMi != null)
@@ -5246,7 +5258,7 @@ namespace SilksongMobileAPI.CecilCore
                                 count++;
                             }
                         }
-                        else if (td.FullName == "BossKit.World.Borrow" && md.Name == "IndexFiles" && md.Parameters.Count == 0)
+                        else if ((td.FullName == "BossKit.World.Borrow" || td.FullName == "ThirdAcolyte.World.Borrow") && md.Name == "IndexFiles" && md.Parameters.Count == 0)
                         {
                             md.Body.Instructions.Clear();
                             md.Body.Variables.Clear();
@@ -5254,7 +5266,7 @@ namespace SilksongMobileAPI.CecilCore
                             il.Emit(OpCodes.Ret);
                             count++;
                         }
-                        else if (td.FullName == "BossKit.World.Borrow" && (md.Name == "LoadAll" || md.Name == "ByAddress" || md.Name == "LoadAtTitle") && _assetHelperBridgeType != null)
+                        else if ((td.FullName == "BossKit.World.Borrow" || td.FullName == "ThirdAcolyte.World.Borrow") && (md.Name == "LoadAll" || md.Name == "ByAddress" || md.Name == "LoadAtTitle") && md.ReturnType.FullName == "System.Collections.IEnumerator" && _assetHelperBridgeType != null)
                         {
                             var emptyCoroMi = _assetHelperBridgeType.GetMethod("EmptyCoroutine", BindingFlags.Static | BindingFlags.Public);
                             if (emptyCoroMi != null)
@@ -5454,7 +5466,7 @@ namespace SilksongMobileAPI.CecilCore
                                 }
                             }
                         }
-                        else if (td.FullName == "BossKit.Core.Pictures" && md.Name == "Find" && md.Parameters.Count == 2 && _assetHelperBridgeType != null)
+                        else if ((td.FullName == "BossKit.Core.Pictures" || td.FullName == "ThirdAcolyte.Core.Pictures") && md.Name == "Find" && md.Parameters.Count == 2 && _assetHelperBridgeType != null)
                         {
                             var picFindMi = _assetHelperBridgeType.GetMethod("BonemasterPicturesFind", BindingFlags.Static | BindingFlags.Public);
                             if (picFindMi != null)
@@ -5493,7 +5505,7 @@ namespace SilksongMobileAPI.CecilCore
                                 count++;
                             }
                         }
-                        else if (td.FullName == "BossKit.Core.Pool" && md.Name == "Find" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
+                        else if ((td.FullName == "BossKit.Core.Pool" || td.FullName == "ThirdAcolyte.Core.Pool") && md.Name == "Find" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
                         {
                             var poolFindMi = _assetHelperBridgeType.GetMethod("BonemasterPoolFind", BindingFlags.Static | BindingFlags.Public);
                             if (poolFindMi != null)
@@ -5507,7 +5519,7 @@ namespace SilksongMobileAPI.CecilCore
                                 count++;
                             }
                         }
-                        else if (td.FullName == "BossKit.Core.Sound" && md.Name == "InMemory" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
+                        else if ((td.FullName == "BossKit.Core.Sound" || td.FullName == "ThirdAcolyte.Core.Sound") && md.Name == "InMemory" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
                         {
                             var soundInMemMi = _assetHelperBridgeType.GetMethod("BonemasterSoundInMemory", BindingFlags.Static | BindingFlags.Public);
                             if (soundInMemMi != null)
@@ -5521,7 +5533,7 @@ namespace SilksongMobileAPI.CecilCore
                                 count++;
                             }
                         }
-                        else if (td.FullName == "BossKit.Core.Library" && md.Name == "Get" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
+                        else if ((td.FullName == "BossKit.Core.Library" || td.FullName == "ThirdAcolyte.Core.Library") && md.Name == "Get" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
                         {
                             var libGetMi = _assetHelperBridgeType.GetMethod("BonemasterLibraryGet", BindingFlags.Static | BindingFlags.Public);
                             if (libGetMi != null)
@@ -5535,7 +5547,7 @@ namespace SilksongMobileAPI.CecilCore
                                 count++;
                             }
                         }
-                        else if (td.FullName == "BossKit.Core.Spray" && md.Name == "FindMaterial" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
+                        else if ((td.FullName == "BossKit.Core.Spray" || td.FullName == "ThirdAcolyte.Core.Spray") && md.Name == "FindMaterial" && md.Parameters.Count == 1 && _assetHelperBridgeType != null)
                         {
                             var findMatMi = _assetHelperBridgeType.GetMethod("BonemasterFindMaterial", BindingFlags.Static | BindingFlags.Public);
                             if (findMatMi != null)
@@ -5908,7 +5920,7 @@ namespace SilksongMobileAPI.CecilCore
                     }
 
                     // 15b-2. Bonemaster Android catalog bundle match: replace String.Equals(string, string) inside <Open>d__* with BonemasterBundleFileNameMatches
-                    if (modName.IndexOf("Bonemaster", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    if ((modName.IndexOf("Bonemaster", StringComparison.OrdinalIgnoreCase) >= 0 || modName.IndexOf("ThirdAcolyte", StringComparison.OrdinalIgnoreCase) >= 0) &&
                         td.Name.StartsWith("<Open>", StringComparison.Ordinal) && md.Name == "MoveNext" && _assetHelperBridgeType != null)
                     {
                         var bmMatchMi = _assetHelperBridgeType.GetMethod("BonemasterBundleFileNameMatches", BindingFlags.Static | BindingFlags.Public);
@@ -7131,6 +7143,132 @@ namespace SilksongMobileAPI.CecilCore
 
             bool existsOnMobile = runtimeType.GetMethods(AllFlags | BindingFlags.FlattenHierarchy).Any(m => m.Name == mName);
             if (existsOnMobile) return false;
+
+            // Restore stripped ParticleSystem.EmitParams & ParticleSystem.Particle property getters/setters via direct native IL field access
+            // (struct fields are preserved by IL2CPP for Emit_Injected/GetParticles/SetParticles even when managed property accessors are stripped).
+            if ((declFull == "UnityEngine.ParticleSystem+EmitParams" || declFull == "UnityEngine.ParticleSystem+Particle") && mr.HasThis && !callerMd.DeclaringType.HasGenericParameters)
+            {
+                bool isEmitParams = declFull == "UnityEngine.ParticleSystem+EmitParams";
+                var particleType = isEmitParams ? ResolveRuntimeType("UnityEngine.ParticleSystem+Particle") : runtimeType;
+                var mParticleFi = isEmitParams ? runtimeType.GetField("m_Particle", AllFlags) : null;
+                if (particleType != null && (!isEmitParams || mParticleFi != null))
+                {
+                    string pFieldName = null;
+                    string flagFieldName = null;
+                    bool isGetter = mName.StartsWith("get_", StringComparison.Ordinal);
+                    bool isSetter = mName.StartsWith("set_", StringComparison.Ordinal);
+                    bool isStartSize = false;
+                    switch (mName)
+                    {
+                        case "get_position":
+                        case "set_position":
+                            pFieldName = "m_Position"; flagFieldName = "m_PositionSet"; break;
+                        case "get_velocity":
+                        case "set_velocity":
+                            pFieldName = "m_Velocity"; flagFieldName = "m_VelocitySet"; break;
+                        case "get_startLifetime":
+                        case "set_startLifetime":
+                            pFieldName = "m_StartLifetime"; flagFieldName = "m_StartLifetimeSet"; break;
+                        case "get_remainingLifetime":
+                        case "set_remainingLifetime":
+                            if (!isEmitParams) { pFieldName = "m_Lifetime"; }
+                            break;
+                        case "get_startColor":
+                        case "set_startColor":
+                            pFieldName = "m_StartColor"; flagFieldName = "m_StartColorSet"; break;
+                        case "get_startSize":
+                        case "set_startSize":
+                            pFieldName = "m_StartSize"; flagFieldName = "m_StartSizeSet"; isStartSize = true; break;
+                    }
+
+                    bool sigOk = pFieldName != null && (isGetter || isSetter)
+                        && ((isGetter && mr.Parameters.Count == 0 && mr.ReturnType.FullName != "System.Void")
+                         || (isSetter && mr.Parameters.Count == 1 && mr.ReturnType.FullName == "System.Void"));
+
+                    if (sigOk)
+                    {
+                        var pFieldFi = particleType.GetField(pFieldName, AllFlags);
+                        var flagFieldFi = (isEmitParams && isSetter && flagFieldName != null) ? runtimeType.GetField(flagFieldName, AllFlags) : null;
+                        var vec3Type = isStartSize ? ResolveRuntimeType("UnityEngine.Vector3") : null;
+                        var vec3XFi = (isStartSize && isGetter && vec3Type != null) ? vec3Type.GetField("x", AllFlags) : null;
+                        var vec3Ctor = (isStartSize && isSetter && vec3Type != null) ? vec3Type.GetConstructor(new[] { typeof(float), typeof(float), typeof(float) }) : null;
+
+                        string valTypeFull = isGetter ? mr.ReturnType.FullName : mr.Parameters[0].ParameterType.FullName;
+                        bool typeMatches = pFieldFi != null && (isStartSize
+                            ? (pFieldFi.FieldType.FullName == "UnityEngine.Vector3" && valTypeFull == "System.Single")
+                            : (pFieldFi.FieldType.FullName == valTypeFull.Replace('/', '+')));
+
+                        bool canEmit = typeMatches
+                            && (!isEmitParams || !isSetter || (flagFieldFi != null && flagFieldFi.FieldType == typeof(bool)))
+                            && (!isStartSize || (isGetter ? vec3XFi != null : vec3Ctor != null));
+
+                        if (canEmit)
+                        {
+                            string bridgeName = $"__MobileFieldBridge_{mr.DeclaringType.Name}_{mName}";
+                            var bridge = callerMd.DeclaringType.Methods.FirstOrDefault(m => m.Name == bridgeName);
+                            if (bridge == null)
+                            {
+                                bridge = new MethodDefinition(
+                                    bridgeName,
+                                    Mono.Cecil.MethodAttributes.Private | Mono.Cecil.MethodAttributes.Static | Mono.Cecil.MethodAttributes.HideBySig,
+                                    mr.ReturnType);
+                                var thisParamType = new ByReferenceType(mr.DeclaringType);
+                                bridge.Parameters.Add(new ParameterDefinition("__this", Mono.Cecil.ParameterAttributes.None, thisParamType));
+                                foreach (var p in mr.Parameters)
+                                    bridge.Parameters.Add(new ParameterDefinition(p.Name, p.Attributes, p.ParameterType));
+
+                                var bil = bridge.Body.GetILProcessor();
+                                bil.Emit(OpCodes.Ldarg_0);
+                                if (isEmitParams)
+                                    bil.Emit(OpCodes.Ldflda, mod.ImportReference(mParticleFi));
+
+                                if (isGetter)
+                                {
+                                    if (isStartSize)
+                                    {
+                                        bil.Emit(OpCodes.Ldflda, mod.ImportReference(pFieldFi));
+                                        bil.Emit(OpCodes.Ldfld, mod.ImportReference(vec3XFi));
+                                    }
+                                    else
+                                    {
+                                        bil.Emit(OpCodes.Ldfld, mod.ImportReference(pFieldFi));
+                                    }
+                                    bil.Emit(OpCodes.Ret);
+                                }
+                                else
+                                {
+                                    if (isStartSize)
+                                    {
+                                        bil.Emit(OpCodes.Ldarg_1);
+                                        bil.Emit(OpCodes.Ldarg_1);
+                                        bil.Emit(OpCodes.Ldarg_1);
+                                        bil.Emit(OpCodes.Newobj, mod.ImportReference(vec3Ctor));
+                                    }
+                                    else
+                                    {
+                                        bil.Emit(OpCodes.Ldarg_1);
+                                    }
+                                    bil.Emit(OpCodes.Stfld, mod.ImportReference(pFieldFi));
+                                    if (isEmitParams && flagFieldFi != null)
+                                    {
+                                        bil.Emit(OpCodes.Ldarg_0);
+                                        bil.Emit(OpCodes.Ldc_I4_1);
+                                        bil.Emit(OpCodes.Stfld, mod.ImportReference(flagFieldFi));
+                                    }
+                                    bil.Emit(OpCodes.Ret);
+                                }
+
+                                callerMd.DeclaringType.Methods.Add(bridge);
+                            }
+
+                            ins.OpCode = OpCodes.Call;
+                            ins.Operand = bridge;
+                            LogInfo($"[PCMod:{modName}] Bridged stripped ParticleSystem struct accessor via native fields: {mr.DeclaringType.FullName}.{mName}");
+                            return true;
+                        }
+                    }
+                }
+            }
 
             string retFull = mr.ReturnType?.FullName ?? "System.Void";
             if (retFull != "System.Void" &&

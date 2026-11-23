@@ -52,6 +52,13 @@ namespace SilksongMobileAPI
         public static ConfigEntry<bool> CfgEnableCrashReporter { get; private set; }
         public static ConfigEntry<bool> CfgPaleAutomatonParryFreeze { get; private set; }
         public static ConfigEntry<bool> CfgAllowGodhomeBenchRespawn { get; private set; }
+        public static ConfigEntry<bool> CfgEnablePantheonBossSkip { get; private set; }
+        public static ConfigEntry<bool> CfgFixPantheonEndSequenceReturn { get; private set; }
+        public static ConfigEntry<bool> CfgFixPantheonEntranceWhiteScreen { get; private set; }
+        public static ConfigEntry<bool> CfgFixGrimmPhase1Stall { get; private set; }
+        public static ConfigEntry<bool> CfgPantheonLowMemoryCleanup { get; private set; }
+        public static ConfigEntry<bool> CfgUnloadFinishedHkBosses { get; private set; }
+        public static ConfigEntry<bool> CfgEnableThirdAcolyteBridge { get; private set; }
 
         private static readonly HashSet<int> _registeredCircularWindowIds = new HashSet<int>();
         private static readonly HashSet<int> _registeredGodhomeCircularWindowIds = new HashSet<int>();
@@ -381,7 +388,6 @@ namespace SilksongMobileAPI
             "SilkenImpact",
             "Silksong.FsmUtil",
             "Skip Intro",
-            "ThirdAcolyte",
             "TouchButtonSkins",
             "WhiteKnightLace",
             "FasterPreloaderUI",
@@ -584,9 +590,23 @@ namespace SilksongMobileAPI
                 CfgPaleAutomatonParryFreeze.SettingChanged += (_, __) => AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting();
                 CfgAllowGodhomeBenchRespawn = Config.Bind("BossFixes", "AllowGodhomeBenchRespawn", true,
                     "Allow resting on Godhome hub benches (GG_Atrium, GG_Workshop, GG_Atrium_Roof) to persist across save & quit.");
+                CfgEnablePantheonBossSkip = Config.Bind("BossFixes", "EnablePantheonBossSkip", true,
+                    "Enable the 'Skip Pantheon Boss' action in the PC Mods & Keys console to skip the currently running Pantheon boss and advance to the next one.");
+                CfgFixPantheonEndSequenceReturn = Config.Bind("BossFixes", "FixPantheonEndSequenceReturn", true,
+                    "Fix infinite loading screen after beating a Pantheon when GG_End_Sequence transitions with an empty dreamReturnScene or missing GG_Unlock scene, and save completion immediately.");
+                CfgFixPantheonEntranceWhiteScreen = Config.Bind("BossFixes", "FixPantheonEntranceWhiteScreen", true,
+                    "Fix white-screen softlock in GG_Boss_Door_Entrance when Godseeker entrance dialogue (Greet 0..4) stalls waiting for CONVO_FINISH.");
+                CfgFixGrimmPhase1Stall = Config.Bind("BossFixes", "FixGrimmPhase1Stall", true,
+                    "Fix Troupe Master Grimm (GG_Grimm) Phase 1 stall in Pantheons, Statues, and Journal fights by advancing stuck 'Grimm Appear 4' and 'HP Scale' FSM states.");
+                CfgPantheonLowMemoryCleanup = Config.Bind("BossFixes", "PantheonLowMemoryCleanup", true,
+                    "Force AlwaysUnloadUnusedAssets=true on GG_* transitions to prevent Android OOM kills during multi-boss Pantheon runs.");
+                CfgUnloadFinishedHkBosses = Config.Bind("BossFixes", "UnloadFinishedHkBosses", true,
+                    "Unload finished HK1 boss scenes and AssetBundles (Unload(true)) + Resources.UnloadUnusedAssets() after the next boss finishes loading.");
+                CfgEnableThirdAcolyteBridge = Config.Bind("BossFixes", "EnableThirdAcolyteBridge", true,
+                    "Enable Android loading-screen preloading (Song Reed Grand shelf + Borrow bundles) and O(1) cache bridge for Kiahah-ThirdAcolyte.");
 
                 HarmonyBridge.SuppressVerboseCombatLogs = CfgEnableCombatSpamFilter.Value;
-                LogDiagnosticInfo($"[Config] Bound API configs: VerboseLogging={CfgEnableVerboseApiLogging.Value}, CombatSpamFilter={CfgEnableCombatSpamFilter.Value}, CircularBubble={CfgEnableCircularBubbleButton.Value}, PatchworkBubbleBridge={CfgEnablePatchworkBubbleBridge.Value}, JsonAotFix={CfgEnableJsonAotFix.Value}, CrashReporter={CfgEnableCrashReporter.Value}, PaleAutomatonParryFreeze={CfgPaleAutomatonParryFreeze.Value}, AllowGodhomeBenchRespawn={CfgAllowGodhomeBenchRespawn.Value}");
+                LogDiagnosticInfo($"[Config] Bound API configs: VerboseLogging={CfgEnableVerboseApiLogging.Value}, CombatSpamFilter={CfgEnableCombatSpamFilter.Value}, CircularBubble={CfgEnableCircularBubbleButton.Value}, PatchworkBubbleBridge={CfgEnablePatchworkBubbleBridge.Value}, JsonAotFix={CfgEnableJsonAotFix.Value}, CrashReporter={CfgEnableCrashReporter.Value}, PaleAutomatonParryFreeze={CfgPaleAutomatonParryFreeze.Value}, AllowGodhomeBenchRespawn={CfgAllowGodhomeBenchRespawn.Value}, PantheonBossSkip={CfgEnablePantheonBossSkip.Value}, FixPantheonEndSeq={CfgFixPantheonEndSequenceReturn.Value}, FixPantheonEntrance={CfgFixPantheonEntranceWhiteScreen.Value}, FixGrimmPhase1={CfgFixGrimmPhase1Stall.Value}, PantheonLowMem={CfgPantheonLowMemoryCleanup.Value}, UnloadFinishedHkBosses={CfgUnloadFinishedHkBosses.Value}, ThirdAcolyteBridge={CfgEnableThirdAcolyteBridge.Value}");
             }
             catch (Exception ex)
             {
@@ -2033,7 +2053,7 @@ namespace SilksongMobileAPI
             var pImg = _uGuiModConsolePanelGo.GetComponent<UnityEngine.UI.Image>();
             pImg.color = new Color(0.08f, 0.07f, 0.10f, 0.96f);
 
-            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.23)", new Vector2(-120f, 392f), new Vector2(1100f, 44f), 24, new Color(0.96f, 0.86f, 0.62f, 1f), TextAnchor.MiddleLeft);
+            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.32)", new Vector2(-120f, 392f), new Vector2(1100f, 44f), 24, new Color(0.96f, 0.86f, 0.62f, 1f), TextAnchor.MiddleLeft);
 
             CreateUGuiButton(_uGuiModConsolePanelGo.transform, "CloseBtn", "Close [X]", new Vector2(630f, 392f), new Vector2(150f, 44f), new Color(0.50f, 0.14f, 0.18f, 0.96f), Color.white, 18, () => SetShowModPanel(false));
 
@@ -2077,13 +2097,20 @@ namespace SilksongMobileAPI
 
             if (_selectedModTab == "Hotkeys")
             {
-                // Row 1: Quick Mod Actions (Stitchwork/Patchwork UI button removed; replaced with direct Profile shortcut)
-                CreateUGuiButton(_uGuiModConsoleContentRoot, "Act_UnlockAll", "Unlock All Crests, Tools & Weaver Skills", new Vector2(-350f, 275f), new Vector2(660f, 52f), new Color(0.16f, 0.34f, 0.22f, 0.96f), Color.white, 18, () =>
+                // Row 1: Quick Mod Actions (Unlock All | Skip Pantheon Boss | Profile & Mod Sync)
+                CreateUGuiButton(_uGuiModConsoleContentRoot, "Act_UnlockAll", "Unlock All Crests & Skills", new Vector2(-455f, 275f), new Vector2(430f, 52f), new Color(0.16f, 0.34f, 0.22f, 0.96f), Color.white, 17, () =>
                 {
                     _unlockStatusMessage = UnlockAllCrestSlotsAndModSkills();
                     if (_uGuiModConsoleStatusText != null) _uGuiModConsoleStatusText.text = _unlockStatusMessage;
                 });
-                CreateUGuiButton(_uGuiModConsoleContentRoot, "Act_OpenProfile", "Open User Profile & Mod Sync (.jsonc) ->", new Vector2(350f, 275f), new Vector2(660f, 52f), new Color(0.20f, 0.28f, 0.42f, 0.96f), Color.white, 18, () =>
+                CreateUGuiButton(_uGuiModConsoleContentRoot, "Act_SkipPantheonBoss", AssetHelperBridge.GetPantheonSkipButtonLabel(), new Vector2(0f, 275f), new Vector2(430f, 52f), new Color(0.50f, 0.32f, 0.10f, 0.96f), new Color(1f, 0.95f, 0.80f, 1f), 17, () =>
+                {
+                    string skipMsg = AssetHelperBridge.SkipCurrentPantheonBoss(out bool didSkip);
+                    _unlockStatusMessage = skipMsg;
+                    if (_uGuiModConsoleStatusText != null) _uGuiModConsoleStatusText.text = skipMsg;
+                    if (didSkip) SetShowModPanel(false);
+                });
+                CreateUGuiButton(_uGuiModConsoleContentRoot, "Act_OpenProfile", "Profile & Mod Sync (.jsonc) ->", new Vector2(455f, 275f), new Vector2(430f, 52f), new Color(0.20f, 0.28f, 0.42f, 0.96f), Color.white, 17, () =>
                 {
                     _selectedModTab = "Profile";
                     _uGuiPageIndex = 0;
@@ -3902,7 +3929,7 @@ namespace SilksongMobileAPI
             {
                 LogDiagnosticWarn($"[Profile] Startup profile init notice: {exProf.Message}");
             }
-            LogDiagnosticInfo($"IRIS v2.9.8.23 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
+            LogDiagnosticInfo($"IRIS v2.9.8.32 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
             AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting();
                 try { AssetHelperBridge.EnsureHkCoreAddressablesSceneBridgeRegistered(); } catch { }
                 try { Instance?.SetupButtons(); } catch { }
@@ -4578,7 +4605,7 @@ namespace SilksongMobileAPI
 
                 _panelRect.x = Mathf.Clamp(_panelRect.x, 16f, Mathf.Max(16f, vWidth - _panelRect.width - 16f));
                 _panelRect.y = Mathf.Clamp(_panelRect.y, 16f, Mathf.Max(16f, vHeight - _panelRect.height - 16f));
-                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.23)", _styleWindow);
+                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.32)", _styleWindow);
             }
             catch (System.Exception __apiEx_46) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("SilksongMobileAPIPlugin", "L2463", __apiEx_46); }
             finally
@@ -4888,6 +4915,11 @@ namespace SilksongMobileAPI
                     if (GUILayout.Button("Unlock All Godhome Statues & Doors", _styleActionBtn, GUILayout.Height(40f)))
                     {
                         _unlockStatusMessage = AssetHelperBridge.UnlockAllGodhomeStatuesAndDoors();
+                    }
+                    if (GUILayout.Button(AssetHelperBridge.GetPantheonSkipButtonLabel(), _styleActionBtn, GUILayout.Height(40f)))
+                    {
+                        _unlockStatusMessage = AssetHelperBridge.SkipCurrentPantheonBoss(out bool didSkip);
+                        if (didSkip) SetShowModPanel(false);
                     }
                     GUILayout.EndHorizontal();
                 }
@@ -5927,14 +5959,14 @@ namespace SilksongMobileAPI
             var topStrip = CreatePanel(rootRect, "TopLetterboxStrip", new Vector2(0f, 504f), new Vector2(1920f, 72f), colStripBg).rectTransform;
             CreatePanel(topStrip, "TopStripBorder", new Vector2(0f, -36f), new Vector2(1920f, 1.5f), colBorder);
 
-            // Left Square Indicator + "IRIS v2.9.8.23"
+            // Left Square Indicator + "IRIS v2.9.8.32"
             CreatePanel(topStrip, "TopSquareDot", new Vector2(-896f, 0f), new Vector2(10f, 10f), colPrimary);
             _topVersionTextComp = CreateLabel(
                 topStrip,
                 "TopVersionLabel",
                 new Vector2(-420f, 0f),
                 new Vector2(920f, 40f),
-                "IRIS v2.9.8.23",
+                "IRIS v2.9.8.32",
                 20,
                 FontStyle.Bold,
                 colPrimary,
@@ -6005,7 +6037,7 @@ namespace SilksongMobileAPI
                 "BottomStepBadgeText",
                 Vector2.zero,
                 new Vector2(176f, 32f),
-                "IRIS v2.9.8.23",
+                "IRIS v2.9.8.32",
                 15,
                 FontStyle.Bold,
                 colDim,
@@ -6100,7 +6132,7 @@ namespace SilksongMobileAPI
                 "DisclaimerFooterLeft",
                 new Vector2(-420f, -328f),
                 new Vector2(680f, 36f),
-                "IRIS v2.9.8.23  //  PC MOD COMPATIBILITY LAYER",
+                "IRIS v2.9.8.32  //  PC MOD COMPATIBILITY LAYER",
                 17,
                 FontStyle.Bold,
                 colMuted,
@@ -6295,7 +6327,7 @@ namespace SilksongMobileAPI
                 _showingDisclaimer = false;
                 _watchdogElapsed = 0f;
             }
-            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.23)...");
+            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.32)...");
             TrySetBackgroundLoadingPriority(ThreadPriority.High);
             yield return null;
 
@@ -6350,6 +6382,8 @@ namespace SilksongMobileAPI
             yield return StartCoroutine(AssetHelperBridge.RunPreloaderPharloomsGloryBatchExtract());
             AdvanceRandomIrisMessage();
             yield return SafeRunSubCoroutine("CoEnsureBonemasterShelfPreloaded", () => AssetHelperBridge.CoEnsureBonemasterShelfPreloaded(forcePreload: true));
+            AdvanceRandomIrisMessage();
+            yield return SafeRunSubCoroutine("CoEnsureThirdAcolyteShelfPreloaded", AssetHelperBridge.CoEnsureThirdAcolyteShelfPreloaded);
             AdvanceRandomIrisMessage();
             yield return SafeRunSubCoroutine("CoPreloadRevoltWidowTemplate", AssetHelperBridge.CoPreloadRevoltWidowTemplate);
             AdvanceRandomIrisMessage();

@@ -2321,13 +2321,19 @@ namespace SilksongMobileAPI
                 ["BONEMASTER_MAIN"] = "Skarr",
                 ["BONEMASTER_SUB"] = "",
                 ["THREAD_MEMORY_BONEMASTER"] = "Enter Memory",
-                ["HUNTER_MESSAGE"] = "A proud warrior who mastered the art of bone and claw."
+                ["HUNTER_MESSAGE"] = "A proud warrior who mastered the art of bone and claw.",
+                ["THIRD_ACOLYTE_SUPER"] = "Third",
+                ["THIRD_ACOLYTE_MAIN"] = "Acolyte",
+                ["THIRD_ACOLYTE_SUB"] = ""
             };
             string[] bonemasterModSheets = new[]
             {
                 "Mods.Bonemaster",
                 "Mods.io.github.kiahah.bonemaster",
-                "Bonemaster"
+                "Bonemaster",
+                "Mods.ThirdAcolyte",
+                "Mods.io.github.kiahah.thirdacolyte",
+                "ThirdAcolyte"
             };
             foreach (var sn in bonemasterModSheets)
             {

@@ -1,5 +1,21 @@
 # Silksong Mobile PC Mod Compatibility API - Changelog
 
+## [v2.9.8.32] - 2026-11-23
+
+### Added & Fixed
+- **Third Acolyte (`Kiahah-ThirdAcolyte`) Full Android Support (`AssetHelperBridge`, `CecilEngine`, `SilksongMobileAPIPlugin`)**:
+  - Added loading-screen shelf preloading (`Song Reed Grand`) and Borrow bundle preloading (`73/73` wants) behind `BossFixes.EnableThirdAcolyteBridge` (default `true`), plus `THIRD_ACOLYTE_SUPER/MAIN` title seeding.
+  - Eliminated mid-fight lag spikes by neutralizing synchronous GPU `ReadPixels` in `ThirdAcolyte.Core.Spray::BodyPoints` and compressed-clip `AudioClip.GetData` in `ThirdAcolyte.Boss.Moves.ChoirBurst/Choir::Transient` (`0.69f`).
+  - Restored stripped `UnityEngine.ParticleSystem.EmitParams` and `ParticleSystem.Particle` property accessors (`position`, `velocity`, `startSize`, `startLifetime`, `remainingLifetime`, `startColor`) via native IL field bridges (`ldflda`/`ldfld`/`stfld`), fixing stationary 5-second white-circle particles across `ThirdAcolyte` and `Bonemaster`.
+  - Upgraded `BonemasterFindMaterial` and `BonemasterPicturesFind` to refresh once per `(activeScene.handle, sceneCount)` change on miss for additive boss scenes (`Hang_04` + `Hang_04_boss`).
+  - Bumped Cecil disk cache to `.cecil_cache_v29832`.
+
+- **Godhome & Pantheon Stability (`AssetHelperBridge`, `SilksongMobileAPIPlugin`, `InGameModMenu`)**:
+  - **Skip Pantheon Boss** (`BossFixes.EnablePantheonBossSkip`, default `true`): 2s-debounced skip button in PC Mods & Keys Console supporting both Direct/Journal and Native Godhome Door Pantheons.
+  - **Finished HK Boss Unloader** (`BossFixes.UnloadFinishedHkBosses`, default `true`): post-load unloader for finished `GG_*` scenes and non-active per-scene bundles in `HkCore.HkScenes.loaded`, followed by async `Resources.UnloadUnusedAssets()` + Gen0 GC.
+  - **Pantheon End Sequence & Entrance Fixes** (`BossFixes.FixPantheonEndSequenceReturn`, `BossFixes.FixPantheonEntranceWhiteScreen`): resolved infinite loading screen & unsaved Pantheon completion on return to `GG_Atrium`/`GG_Atrium_Roof`, and fixed white-screen softlock in `GG_Boss_Door_Entrance`.
+  - **Grimm Phase 1 Fix** (`BossFixes.FixGrimmPhase1Stall`): resolved `GG_Grimm` Phase 1 stall in Native Pantheons and Statues.
+
 ## [v2.9.8.23] - 2026-11-22
 
 ### Added & Enhanced
