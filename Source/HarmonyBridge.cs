@@ -2924,6 +2924,7 @@ namespace SilksongMobileAPI
                 }
             }
             catch (System.Exception __apiEx_69) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("HarmonyBridge", "L2492", __apiEx_69); }
+            try { AssetHelperBridge.OnPaleAutomatonCombatEvent(__instance, null, "NonFatalHit"); } catch { }
             try
             {
                 EnsureStylemeterResolved();

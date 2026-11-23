@@ -3256,6 +3256,566 @@ namespace SilksongMobileAPI
         public List<string> Dependencies = new List<string>();
     }
 
+    public sealed class IrisUpdateBlinkBehavior : MonoBehaviour
+    {
+        private UnityEngine.UI.Image _img;
+        private UnityEngine.UI.Text _txt;
+        private string _normalText;
+        private string _alertText;
+        private Color _normalCol;
+        private Color _blinkA;
+        private Color _blinkB;
+
+        public void Init(UnityEngine.UI.Image img, UnityEngine.UI.Text txt, string normalText, string alertText, Color normalCol, Color blinkA, Color blinkB)
+        {
+            _img = img;
+            _txt = txt;
+            _normalText = normalText;
+            _alertText = alertText;
+            _normalCol = normalCol;
+            _blinkA = blinkA;
+            _blinkB = blinkB;
+        }
+
+        private void Update()
+        {
+            if (_img == null) return;
+            bool shouldBlink = IrisRemoteUpdater.IsUpdateAvailable && !IrisRemoteUpdater.UpdateAppliedPendingRestart;
+            if (shouldBlink)
+            {
+                float t = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 5.5f);
+                _img.color = Color.Lerp(_blinkB, _blinkA, t);
+                if (_txt != null && !string.IsNullOrEmpty(_alertText) && _txt.text != _alertText)
+                    _txt.text = _alertText;
+            }
+            else
+            {
+                if (_img.color != _normalCol) _img.color = _normalCol;
+                if (_txt != null && !string.IsNullOrEmpty(_normalText) && _txt.text != _normalText)
+                    _txt.text = _normalText;
+            }
+        }
+    }
+
+    public static class IrisRemoteUpdater
+    {
+        public const string CurrentVersionText = "2.9.8.43";
+        private const string DefaultManifestUrl = "https://raw.githubusercontent.com/loreMx0/SilksongMobileAPI/main/00_IRIS/plugin.json";
+
+        public static bool IsChecking { get; private set; }
+        public static bool IsDownloading { get; private set; }
+        public static bool IsUpdateAvailable { get; private set; }
+        public static bool UpdateAppliedPendingRestart { get; private set; }
+        public static string RemoteVersionText { get; private set; } = "";
+        public static string StatusMessage { get; private set; } = $"IRIS v{CurrentVersionText} (Not checked yet)";
+        private static bool _startupCheckScheduled;
+
+        public static string GetStatusBannerText()
+        {
+            if (UpdateAppliedPendingRestart)
+                return $"[UPDATED] IRIS v{RemoteVersionText} installed — restart the game to activate!";
+            if (IsDownloading)
+                return StatusMessage;
+            if (IsUpdateAvailable)
+                return $"[UPDATE AVAILABLE] IRIS v{CurrentVersionText} -> v{RemoteVersionText} ready to install!";
+            if (IsChecking)
+                return $"Checking for IRIS updates (current: v{CurrentVersionText})...";
+            return StatusMessage;
+        }
+
+        public static void ScheduleStartupCheck()
+        {
+            if (_startupCheckScheduled) return;
+            _startupCheckScheduled = true;
+            if (SilksongMobileAPIPlugin.Instance != null)
+            {
+                SilksongMobileAPIPlugin.Instance.StartCoroutine(CoDelayedStartupCheck());
+            }
+        }
+
+        private static IEnumerator CoDelayedStartupCheck()
+        {
+            yield return new WaitForSecondsRealtime(3.0f);
+            StartCheckForUpdates(null);
+        }
+
+        public static void StartCheckForUpdates(Action onDone)
+        {
+            if (IsChecking || IsDownloading) return;
+            if (SilksongMobileAPIPlugin.Instance == null) return;
+            SilksongMobileAPIPlugin.Instance.StartCoroutine(CoCheckForUpdates(onDone));
+        }
+
+        public static void StartDownloadAndApplyUpdate(Action onDone)
+        {
+            if (IsDownloading) return;
+            if (SilksongMobileAPIPlugin.Instance == null) return;
+            SilksongMobileAPIPlugin.Instance.StartCoroutine(CoDownloadAndApplyUpdate(onDone));
+        }
+
+        private static string GetManifestUrl()
+        {
+            string cfgUrl = SilksongMobileAPIPlugin.CfgRemoteManifestUrl?.Value;
+            return !string.IsNullOrWhiteSpace(cfgUrl) ? cfgUrl.Trim() : DefaultManifestUrl;
+        }
+
+        private static string GetDllUrlFromManifest(string manifestUrl)
+        {
+            int slash = manifestUrl.LastIndexOf('/');
+            if (slash > 8)
+                return manifestUrl.Substring(0, slash + 1) + "IRIS.dll";
+            return "https://raw.githubusercontent.com/loreMx0/SilksongMobileAPI/main/00_IRIS/IRIS.dll";
+        }
+
+        private static bool TryParseVersionString(string text, out Version parsed, out string cleanText)
+        {
+            parsed = null;
+            cleanText = "";
+            if (string.IsNullOrEmpty(text)) return false;
+            var m = System.Text.RegularExpressions.Regex.Match(text, @"v?(\d+\.\d+\.\d+(?:\.\d+)?)");
+            if (!m.Success) return false;
+            cleanText = m.Groups[1].Value;
+            return Version.TryParse(cleanText, out parsed);
+        }
+
+        private static string ExtractJsonNameField(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return "";
+            var m = System.Text.RegularExpressions.Regex.Match(json, "\"Name\"\\s*:\\s*\"([^\"]+)\"");
+            return m.Success ? m.Groups[1].Value : "";
+        }
+
+        private static IEnumerator CoCheckForUpdates(Action onDone)
+        {
+            IsChecking = true;
+            StatusMessage = "Checking GitHub for IRIS updates...";
+            string url = GetManifestUrl() + "?t=" + DateTime.UtcNow.Ticks;
+            using (UnityWebRequest req = UnityWebRequest.Get(url))
+            {
+                req.timeout = 12;
+                req.SetRequestHeader("Cache-Control", "no-cache");
+                var op = req.SendWebRequest();
+                while (!op.isDone) yield return null;
+
+                if (req.result == UnityWebRequest.Result.Success && req.downloadHandler != null)
+                {
+                    string json = req.downloadHandler.text ?? "";
+                    string nameVal = ExtractJsonNameField(json);
+                    if (TryParseVersionString(nameVal, out Version remoteVer, out string remoteClean) &&
+                        TryParseVersionString(CurrentVersionText, out Version localVer, out _))
+                    {
+                        RemoteVersionText = remoteClean;
+                        if (remoteVer > localVer)
+                        {
+                            IsUpdateAvailable = true;
+                            StatusMessage = $"IRIS update available: v{CurrentVersionText} -> v{remoteClean}";
+                            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[RemoteUpdater] Update available: v{CurrentVersionText} -> v{remoteClean}.");
+                            TryShowMenuUpdateToastIfNeeded();
+                        }
+                        else
+                        {
+                            IsUpdateAvailable = false;
+                            StatusMessage = $"IRIS v{CurrentVersionText} is up to date (latest: v{remoteClean}).";
+                            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[RemoteUpdater] Up to date (local=v{CurrentVersionText}, remote=v{remoteClean}).");
+                        }
+                    }
+                    else
+                    {
+                        StatusMessage = $"IRIS v{CurrentVersionText} (Could not parse remote version)";
+                        SilksongMobileAPIPlugin.LogDiagnosticWarn($"[RemoteUpdater] Could not parse version from manifest Name='{nameVal}'.");
+                    }
+                }
+                else
+                {
+                    StatusMessage = $"IRIS v{CurrentVersionText} (Offline / check failed)";
+                    SilksongMobileAPIPlugin.LogDiagnosticWarn($"[RemoteUpdater] Update check skipped/failed: {req.error}");
+                }
+            }
+            IsChecking = false;
+            try { onDone?.Invoke(); } catch { }
+        }
+
+        private static string ResolveIrisPluginDir()
+        {
+            try
+            {
+                string loc = typeof(SilksongMobileAPIPlugin).Assembly.Location;
+                if (!string.IsNullOrEmpty(loc))
+                {
+                    string dir = Path.GetDirectoryName(loc);
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                        return dir;
+                }
+            }
+            catch { }
+            try
+            {
+                string fallback = Path.Combine(BepInEx.Paths.PluginPath, "00_IRIS");
+                if (Directory.Exists(fallback)) return fallback;
+            }
+            catch { }
+            return null;
+        }
+
+        private static GameObject _updatingOverlayGo;
+        private static UnityEngine.UI.Text _updatingTitleText;
+        private static UnityEngine.UI.Text _updatingDetailText;
+        private static UnityEngine.UI.Image _updatingFillImg;
+        private static GameObject _updatingCloseBtnGo;
+
+        private static GameObject _menuToastGo;
+        private static bool _menuToastShownThisVisit;
+        private static bool _menuToastRunning;
+
+        public static void OnSceneLoadedForToast(string sceneName)
+        {
+            if (string.Equals(sceneName, "Menu_Title", StringComparison.OrdinalIgnoreCase))
+            {
+                _menuToastShownThisVisit = false;
+                TryShowMenuUpdateToastIfNeeded();
+            }
+            else
+            {
+                _menuToastShownThisVisit = false;
+                DestroyMenuToastImmediate();
+            }
+        }
+
+        public static void TryShowMenuUpdateToastIfNeeded()
+        {
+            if (!IsUpdateAvailable || UpdateAppliedPendingRestart || _menuToastShownThisVisit || _menuToastRunning)
+                return;
+            var activeSc = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            if (!activeSc.IsValid() || !string.Equals(activeSc.name, "Menu_Title", StringComparison.OrdinalIgnoreCase))
+                return;
+            if (SilksongMobileAPIPlugin.Instance == null) return;
+            _menuToastShownThisVisit = true;
+            SilksongMobileAPIPlugin.Instance.StartCoroutine(CoShowMenuUpdateToast());
+        }
+
+        private static void DestroyMenuToastImmediate()
+        {
+            if (_menuToastGo != null)
+            {
+                try { UnityEngine.Object.Destroy(_menuToastGo); } catch { }
+                _menuToastGo = null;
+            }
+            _menuToastRunning = false;
+        }
+
+        private static IEnumerator CoShowMenuUpdateToast()
+        {
+            DestroyMenuToastImmediate();
+            _menuToastRunning = true;
+            try
+            {
+                _menuToastGo = new GameObject("IRIS_MenuUpdateToastCanvas");
+                UnityEngine.Object.DontDestroyOnLoad(_menuToastGo);
+                var canvas = _menuToastGo.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvas.sortingOrder = 32765;
+                var scaler = _menuToastGo.AddComponent<UnityEngine.UI.CanvasScaler>();
+                scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1920f, 1080f);
+                scaler.matchWidthOrHeight = 0.5f;
+
+                var borderGo = new GameObject("ToastBorder", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image));
+                borderGo.transform.SetParent(_menuToastGo.transform, false);
+                var brt = borderGo.GetComponent<RectTransform>();
+                brt.anchorMin = new Vector2(0.5f, 1f);
+                brt.anchorMax = new Vector2(0.5f, 1f);
+                brt.pivot = new Vector2(0.5f, 1f);
+                brt.anchoredPosition = new Vector2(0f, -26f);
+                brt.sizeDelta = new Vector2(880f, 70f);
+                borderGo.GetComponent<UnityEngine.UI.Image>().color = new Color(0.96f, 0.64f, 0.14f, 0.98f);
+
+                var bgGo = new GameObject("ToastBg", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image));
+                bgGo.transform.SetParent(borderGo.transform, false);
+                var bgRt = bgGo.GetComponent<RectTransform>();
+                bgRt.anchorMin = Vector2.zero;
+                bgRt.anchorMax = Vector2.one;
+                bgRt.offsetMin = new Vector2(3f, 3f);
+                bgRt.offsetMax = new Vector2(-3f, -3f);
+                bgGo.GetComponent<UnityEngine.UI.Image>().color = new Color(0.08f, 0.07f, 0.11f, 0.96f);
+
+                var txtGo = new GameObject("ToastText", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Text));
+                txtGo.transform.SetParent(bgGo.transform, false);
+                var trt = txtGo.GetComponent<RectTransform>();
+                trt.anchorMin = Vector2.zero;
+                trt.anchorMax = Vector2.one;
+                trt.offsetMin = new Vector2(16f, 4f);
+                trt.offsetMax = new Vector2(-16f, -4f);
+                var txt = txtGo.GetComponent<UnityEngine.UI.Text>();
+                txt.font = HarmonyBridge.GetFallbackFont() ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                txt.fontSize = 24;
+                txt.fontStyle = FontStyle.Bold;
+                txt.alignment = TextAnchor.MiddleCenter;
+                txt.color = new Color(1f, 0.88f, 0.45f, 1f);
+                txt.text = $"IRIS UPDATE AVAILABLE: v{RemoteVersionText}  —  Open Profile to Update";
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogApiCatch("IrisRemoteUpdater", "ShowMenuToast", ex);
+                DestroyMenuToastImmediate();
+                yield break;
+            }
+
+            var myToast = _menuToastGo;
+            float elapsed = 0f;
+            while (elapsed < 3.0f && _menuToastGo == myToast)
+            {
+                yield return new WaitForSecondsRealtime(0.25f);
+                elapsed += 0.25f;
+                var curSc = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+                if (!curSc.IsValid() || !string.Equals(curSc.name, "Menu_Title", StringComparison.OrdinalIgnoreCase) || UpdateAppliedPendingRestart)
+                    break;
+            }
+            if (_menuToastGo == myToast) DestroyMenuToastImmediate();
+        }
+
+        private static void ShowUpdatingOverlay(string title, string detail, float progress, bool showClose, Color? titleColor = null)
+        {
+            try
+            {
+                if (_updatingOverlayGo == null)
+                {
+                    _updatingOverlayGo = new GameObject("IRIS_UpdatingOverlayCanvas");
+                    UnityEngine.Object.DontDestroyOnLoad(_updatingOverlayGo);
+                    var canvas = _updatingOverlayGo.AddComponent<Canvas>();
+                    canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                    canvas.sortingOrder = 32766;
+                    var scaler = _updatingOverlayGo.AddComponent<UnityEngine.UI.CanvasScaler>();
+                    scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                    scaler.referenceResolution = new Vector2(1920f, 1080f);
+                    scaler.matchWidthOrHeight = 0.5f;
+                    _updatingOverlayGo.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+
+                    var dimGo = new GameObject("Backdrop", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image));
+                    dimGo.transform.SetParent(_updatingOverlayGo.transform, false);
+                    var drt = dimGo.GetComponent<RectTransform>();
+                    drt.anchorMin = Vector2.zero;
+                    drt.anchorMax = Vector2.one;
+                    drt.offsetMin = Vector2.zero;
+                    drt.offsetMax = Vector2.zero;
+                    dimGo.GetComponent<UnityEngine.UI.Image>().color = new Color(0.03f, 0.03f, 0.05f, 0.94f);
+
+                    var cardGo = new GameObject("Card", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image));
+                    cardGo.transform.SetParent(dimGo.transform, false);
+                    var crt = cardGo.GetComponent<RectTransform>();
+                    crt.anchorMin = new Vector2(0.5f, 0.5f);
+                    crt.anchorMax = new Vector2(0.5f, 0.5f);
+                    crt.pivot = new Vector2(0.5f, 0.5f);
+                    crt.sizeDelta = new Vector2(960f, 360f);
+                    cardGo.GetComponent<UnityEngine.UI.Image>().color = new Color(0.09f, 0.08f, 0.13f, 0.98f);
+
+                    var font = HarmonyBridge.GetFallbackFont() ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+                    var tGo = new GameObject("Title", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Text));
+                    tGo.transform.SetParent(cardGo.transform, false);
+                    var trt = tGo.GetComponent<RectTransform>();
+                    trt.anchoredPosition = new Vector2(0f, 105f);
+                    trt.sizeDelta = new Vector2(880f, 64f);
+                    _updatingTitleText = tGo.GetComponent<UnityEngine.UI.Text>();
+                    _updatingTitleText.font = font;
+                    _updatingTitleText.fontSize = 36;
+                    _updatingTitleText.fontStyle = FontStyle.Bold;
+                    _updatingTitleText.alignment = TextAnchor.MiddleCenter;
+
+                    var dGo = new GameObject("Detail", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Text));
+                    dGo.transform.SetParent(cardGo.transform, false);
+                    var dtrt = dGo.GetComponent<RectTransform>();
+                    dtrt.anchoredPosition = new Vector2(0f, 28f);
+                    dtrt.sizeDelta = new Vector2(880f, 52f);
+                    _updatingDetailText = dGo.GetComponent<UnityEngine.UI.Text>();
+                    _updatingDetailText.font = font;
+                    _updatingDetailText.fontSize = 22;
+                    _updatingDetailText.alignment = TextAnchor.MiddleCenter;
+                    _updatingDetailText.color = new Color(0.86f, 0.90f, 0.96f, 1f);
+
+                    var barBgGo = new GameObject("BarBg", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image));
+                    barBgGo.transform.SetParent(cardGo.transform, false);
+                    var bbrt = barBgGo.GetComponent<RectTransform>();
+                    bbrt.anchoredPosition = new Vector2(0f, -38f);
+                    bbrt.sizeDelta = new Vector2(780f, 28f);
+                    barBgGo.GetComponent<UnityEngine.UI.Image>().color = new Color(0.18f, 0.18f, 0.24f, 1f);
+
+                    var barFillGo = new GameObject("BarFill", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image));
+                    barFillGo.transform.SetParent(barBgGo.transform, false);
+                    var bfrt = barFillGo.GetComponent<RectTransform>();
+                    bfrt.anchorMin = new Vector2(0f, 0f);
+                    bfrt.anchorMax = new Vector2(0f, 1f);
+                    bfrt.pivot = new Vector2(0f, 0.5f);
+                    bfrt.offsetMin = Vector2.zero;
+                    bfrt.offsetMax = Vector2.zero;
+                    _updatingFillImg = barFillGo.GetComponent<UnityEngine.UI.Image>();
+                    _updatingFillImg.color = new Color(0.95f, 0.65f, 0.18f, 1f);
+
+                    _updatingCloseBtnGo = new GameObject("CloseUpdateBtn", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Button));
+                    _updatingCloseBtnGo.transform.SetParent(cardGo.transform, false);
+                    var cbrt = _updatingCloseBtnGo.GetComponent<RectTransform>();
+                    cbrt.anchoredPosition = new Vector2(0f, -118f);
+                    cbrt.sizeDelta = new Vector2(280f, 54f);
+                    _updatingCloseBtnGo.GetComponent<UnityEngine.UI.Image>().color = new Color(0.22f, 0.34f, 0.46f, 0.98f);
+                    var cBtn = _updatingCloseBtnGo.GetComponent<UnityEngine.UI.Button>();
+                    cBtn.onClick.AddListener(HideUpdatingOverlay);
+                    var cTxtGo = new GameObject("CloseTxt", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Text));
+                    cTxtGo.transform.SetParent(_updatingCloseBtnGo.transform, false);
+                    var ctrt = cTxtGo.GetComponent<RectTransform>();
+                    ctrt.anchorMin = Vector2.zero;
+                    ctrt.anchorMax = Vector2.one;
+                    ctrt.offsetMin = Vector2.zero;
+                    ctrt.offsetMax = Vector2.zero;
+                    var cTxt = cTxtGo.GetComponent<UnityEngine.UI.Text>();
+                    cTxt.font = font;
+                    cTxt.fontSize = 22;
+                    cTxt.fontStyle = FontStyle.Bold;
+                    cTxt.alignment = TextAnchor.MiddleCenter;
+                    cTxt.color = Color.white;
+                    cTxt.text = "Close";
+                }
+
+                if (_updatingTitleText != null)
+                {
+                    _updatingTitleText.text = title;
+                    _updatingTitleText.color = titleColor ?? new Color(0.98f, 0.84f, 0.42f, 1f);
+                }
+                if (_updatingDetailText != null) _updatingDetailText.text = detail;
+                if (_updatingFillImg != null)
+                {
+                    var frt = _updatingFillImg.rectTransform;
+                    frt.anchorMax = new Vector2(Mathf.Clamp01(progress), 1f);
+                }
+                if (_updatingCloseBtnGo != null) _updatingCloseBtnGo.SetActive(showClose);
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogApiCatch("IrisRemoteUpdater", "ShowUpdatingOverlay", ex);
+                if (_updatingCloseBtnGo == null) HideUpdatingOverlay();
+            }
+        }
+
+        private static void HideUpdatingOverlay()
+        {
+            if (_updatingOverlayGo != null)
+            {
+                try { UnityEngine.Object.Destroy(_updatingOverlayGo); } catch { }
+                _updatingOverlayGo = null;
+                _updatingTitleText = null;
+                _updatingDetailText = null;
+                _updatingFillImg = null;
+                _updatingCloseBtnGo = null;
+            }
+        }
+
+        private static IEnumerator CoDownloadAndApplyUpdate(Action onDone)
+        {
+            IsDownloading = true;
+            DestroyMenuToastImmediate();
+            StatusMessage = $"Downloading IRIS v{RemoteVersionText}...";
+            ShowUpdatingOverlay("UPDATING IRIS...", StatusMessage, 0.05f, false);
+            string irisDir = ResolveIrisPluginDir();
+            if (string.IsNullOrEmpty(irisDir))
+            {
+                StatusMessage = "Update failed: could not locate 00_IRIS plugin folder.";
+                ShowUpdatingOverlay("IRIS UPDATE FAILED", StatusMessage, 0f, true, new Color(1f, 0.45f, 0.45f, 1f));
+                IsDownloading = false;
+                try { onDone?.Invoke(); } catch { }
+                yield break;
+            }
+
+            string manifestUrl = GetManifestUrl();
+            string dllUrl = GetDllUrlFromManifest(manifestUrl) + "?t=" + DateTime.UtcNow.Ticks;
+            byte[] dllBytes = null;
+            using (UnityWebRequest req = UnityWebRequest.Get(dllUrl))
+            {
+                req.timeout = 30;
+                req.SetRequestHeader("Cache-Control", "no-cache");
+                var op = req.SendWebRequest();
+                while (!op.isDone)
+                {
+                    int pct = Mathf.Clamp(Mathf.RoundToInt(req.downloadProgress * 100f), 0, 100);
+                    StatusMessage = $"Downloading IRIS v{RemoteVersionText}... ({pct}%)";
+                    ShowUpdatingOverlay("UPDATING IRIS...", StatusMessage, 0.05f + 0.75f * Mathf.Clamp01(req.downloadProgress), false);
+                    yield return null;
+                }
+                if (req.result == UnityWebRequest.Result.Success && req.downloadHandler != null)
+                {
+                    dllBytes = req.downloadHandler.data;
+                }
+                else
+                {
+                    StatusMessage = $"Download failed: {req.error}";
+                    ShowUpdatingOverlay("IRIS UPDATE FAILED", StatusMessage, 0f, true, new Color(1f, 0.45f, 0.45f, 1f));
+                    SilksongMobileAPIPlugin.LogDiagnosticWarn($"[RemoteUpdater] IRIS.dll download failed: {req.error}");
+                    IsDownloading = false;
+                    try { onDone?.Invoke(); } catch { }
+                    yield break;
+                }
+            }
+
+            if (dllBytes == null || dllBytes.Length < 50000 || dllBytes[0] != 0x4D || dllBytes[1] != 0x5A)
+            {
+                StatusMessage = $"Update aborted: downloaded IRIS.dll is invalid ({dllBytes?.Length ?? 0} bytes).";
+                ShowUpdatingOverlay("IRIS UPDATE FAILED", StatusMessage, 0f, true, new Color(1f, 0.45f, 0.45f, 1f));
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[RemoteUpdater] Invalid IRIS.dll payload ({dllBytes?.Length ?? 0} bytes).");
+                IsDownloading = false;
+                try { onDone?.Invoke(); } catch { }
+                yield break;
+            }
+
+            string manifestJson = null;
+            using (UnityWebRequest mReq = UnityWebRequest.Get(manifestUrl + "?t=" + DateTime.UtcNow.Ticks))
+            {
+                mReq.timeout = 12;
+                var mop = mReq.SendWebRequest();
+                while (!mop.isDone) yield return null;
+                if (mReq.result == UnityWebRequest.Result.Success && mReq.downloadHandler != null)
+                {
+                    string txt = mReq.downloadHandler.text ?? "";
+                    if (txt.Contains("\"EntryDLL\"")) manifestJson = txt;
+                }
+            }
+
+            try
+            {
+                string dllPath = Path.Combine(irisDir, "IRIS.dll");
+                string tmpPath = Path.Combine(irisDir, "IRIS.dll.tmp");
+                string bakPath = Path.Combine(irisDir, "IRIS.dll.bak");
+                File.WriteAllBytes(tmpPath, dllBytes);
+                if (File.Exists(dllPath))
+                {
+                    try { File.Copy(dllPath, bakPath, true); } catch { }
+                    File.Delete(dllPath);
+                }
+                File.Move(tmpPath, dllPath);
+                if (!string.IsNullOrEmpty(manifestJson))
+                {
+                    try { File.WriteAllText(Path.Combine(irisDir, "plugin.json"), manifestJson); } catch { }
+                }
+                UpdateAppliedPendingRestart = true;
+                IsUpdateAvailable = false;
+                StatusMessage = $"Updated to IRIS v{RemoteVersionText} ({dllBytes.Length / 1024} KB)! Restart game to apply.";
+                ShowUpdatingOverlay("IRIS UPDATE COMPLETE", StatusMessage, 1f, true, new Color(0.45f, 0.98f, 0.62f, 1f));
+                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[RemoteUpdater] Successfully updated {dllPath} to v{RemoteVersionText} ({dllBytes.Length} bytes).");
+            }
+            catch (Exception ex)
+            {
+                string dllPathRb = Path.Combine(irisDir, "IRIS.dll");
+                string bakPathRb = Path.Combine(irisDir, "IRIS.dll.bak");
+                if (!File.Exists(dllPathRb) && File.Exists(bakPathRb))
+                {
+                    try { File.Copy(bakPathRb, dllPathRb, true); } catch { }
+                }
+                StatusMessage = $"Install error: {ex.Message}";
+                ShowUpdatingOverlay("IRIS UPDATE FAILED", StatusMessage, 0f, true, new Color(1f, 0.45f, 0.45f, 1f));
+                SilksongMobileAPIPlugin.LogApiCatch("IrisRemoteUpdater", "ApplyUpdate", ex);
+            }
+
+            IsDownloading = false;
+            try { onDone?.Invoke(); } catch { }
+        }
+    }
+
     public sealed class IrisProfileHoldDownloadBehavior : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler
     {
         public RectTransform FillRect;
@@ -4000,6 +4560,32 @@ namespace SilksongMobileAPI
             {
                 ImportProfileWithFileManager();
             }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(4f);
+            GUILayout.BeginHorizontal("box");
+            GUILayout.Label($"<b>{IrisRemoteUpdater.GetStatusBannerText()}</b>");
+            Color _prevUpdCol = GUI.color;
+            if (IrisRemoteUpdater.IsUpdateAvailable && !IrisRemoteUpdater.UpdateAppliedPendingRestart)
+                GUI.color = (Mathf.Sin(Time.unscaledTime * 6f) > 0f) ? new Color(1f, 0.78f, 0.25f, 1f) : new Color(0.75f, 0.45f, 0.15f, 1f);
+            string _imUpdBtn = IrisRemoteUpdater.IsDownloading
+                ? "Updating..."
+                : (IrisRemoteUpdater.UpdateAppliedPendingRestart
+                    ? "Restart Game"
+                    : (IrisRemoteUpdater.IsUpdateAvailable
+                        ? $"Update -> v{IrisRemoteUpdater.RemoteVersionText}"
+                        : (IrisRemoteUpdater.IsChecking ? "Checking..." : "Check API Update")));
+            if (GUILayout.Button(_imUpdBtn, GUILayout.Width(210f), GUILayout.Height(30f)))
+            {
+                if (!IrisRemoteUpdater.IsDownloading && !IrisRemoteUpdater.IsChecking && !IrisRemoteUpdater.UpdateAppliedPendingRestart)
+                {
+                    if (IrisRemoteUpdater.IsUpdateAvailable)
+                        IrisRemoteUpdater.StartDownloadAndApplyUpdate(null);
+                    else
+                        IrisRemoteUpdater.StartCheckForUpdates(null);
+                }
+            }
+            GUI.color = _prevUpdCol;
             GUILayout.EndHorizontal();
 
             GUILayout.Space(4f);

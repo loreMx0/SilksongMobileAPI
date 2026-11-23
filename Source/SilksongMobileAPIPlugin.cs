@@ -51,6 +51,11 @@ namespace SilksongMobileAPI
         public static ConfigEntry<bool> CfgEnableJsonAotFix { get; private set; }
         public static ConfigEntry<bool> CfgEnableCrashReporter { get; private set; }
         public static ConfigEntry<bool> CfgPaleAutomatonParryFreeze { get; private set; }
+        public static ConfigEntry<bool> CfgPaleAutomatonPhaseGuard { get; private set; }
+        public static ConfigEntry<int> CfgPaleAutomatonMinParryDamage { get; private set; }
+        public static ConfigEntry<bool> CfgClampRebelliousSentinelArena { get; private set; }
+        public static ConfigEntry<bool> CfgEnableRemoteUpdateCheck { get; private set; }
+        public static ConfigEntry<string> CfgRemoteManifestUrl { get; private set; }
         public static ConfigEntry<bool> CfgAllowGodhomeBenchRespawn { get; private set; }
         public static ConfigEntry<bool> CfgEnablePantheonBossSkip { get; private set; }
         public static ConfigEntry<bool> CfgFixPantheonEndSequenceReturn { get; private set; }
@@ -588,6 +593,12 @@ namespace SilksongMobileAPI
                 CfgPaleAutomatonParryFreeze = Config.Bind("BossFixes", "PaleAutomatonParryFreeze", true,
                     "Enable Aeternal Everwatcher-style parry freeze frames (FreezeMomentTypes.NailClashEffect) during the Pale Automaton boss fight.");
                 CfgPaleAutomatonParryFreeze.SettingChanged += (_, __) => AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting();
+                CfgPaleAutomatonPhaseGuard = Config.Bind("BossFixes", "PaleAutomatonPhaseGuard", true,
+                    "Ensure Pale Automaton Phase 2/3 transitions fire reliably in Arborium_11 by hoisting PhaseCheck lambdas before SendEvent actions and providing an event-driven fallback if hp stays below threshold.");
+                CfgPaleAutomatonMinParryDamage = Config.Bind("BossFixes", "PaleAutomatonMinParryDamage", 10,
+                    "Minimum damage dealt to Pale Automaton per NailClash parry (default 10; set to 0 to use vanilla nailDamage/2). Respects phase HP floors.");
+            CfgClampRebelliousSentinelArena = Config.Bind("BossFixes", "ClampRebelliousSentinelArena", true,
+                "Clamp Song Knight inside Hang_17b arena bounds (x: 29..50, y: 5.5..22) when RebelliousSecondSentinel is loaded so RotateOverTime/Land 2 cannot teleport him out of bounds.");
                 CfgAllowGodhomeBenchRespawn = Config.Bind("BossFixes", "AllowGodhomeBenchRespawn", true,
                     "Allow resting on Godhome hub benches (GG_Atrium, GG_Workshop, GG_Atrium_Roof) to persist across save & quit.");
                 CfgEnablePantheonBossSkip = Config.Bind("BossFixes", "EnablePantheonBossSkip", true,
@@ -604,6 +615,11 @@ namespace SilksongMobileAPI
                     "Unload finished HK1 boss scenes and AssetBundles (Unload(true)) + Resources.UnloadUnusedAssets() after the next boss finishes loading.");
                 CfgEnableThirdAcolyteBridge = Config.Bind("BossFixes", "EnableThirdAcolyteBridge", true,
                     "Enable Android loading-screen preloading (Song Reed Grand shelf + Borrow bundles) and O(1) cache bridge for Kiahah-ThirdAcolyte.");
+                CfgEnableRemoteUpdateCheck = Config.Bind("Updates", "EnableRemoteUpdateCheck", true,
+                    "Check GitHub once at startup for a newer IRIS release and blink the Profile tab when an update is available.");
+                CfgRemoteManifestUrl = Config.Bind("Updates", "RemoteManifestUrl",
+                    "https://raw.githubusercontent.com/loreMx0/SilksongMobileAPI/main/00_IRIS/plugin.json",
+                    "Raw URL to 00_IRIS/plugin.json used to check for remote IRIS updates (IRIS.dll is fetched from the same folder).");
 
                 HarmonyBridge.SuppressVerboseCombatLogs = CfgEnableCombatSpamFilter.Value;
                 LogDiagnosticInfo($"[Config] Bound API configs: VerboseLogging={CfgEnableVerboseApiLogging.Value}, CombatSpamFilter={CfgEnableCombatSpamFilter.Value}, CircularBubble={CfgEnableCircularBubbleButton.Value}, PatchworkBubbleBridge={CfgEnablePatchworkBubbleBridge.Value}, JsonAotFix={CfgEnableJsonAotFix.Value}, CrashReporter={CfgEnableCrashReporter.Value}, PaleAutomatonParryFreeze={CfgPaleAutomatonParryFreeze.Value}, AllowGodhomeBenchRespawn={CfgAllowGodhomeBenchRespawn.Value}, PantheonBossSkip={CfgEnablePantheonBossSkip.Value}, FixPantheonEndSeq={CfgFixPantheonEndSequenceReturn.Value}, FixPantheonEntrance={CfgFixPantheonEntranceWhiteScreen.Value}, FixGrimmPhase1={CfgFixGrimmPhase1Stall.Value}, PantheonLowMem={CfgPantheonLowMemoryCleanup.Value}, UnloadFinishedHkBosses={CfgUnloadFinishedHkBosses.Value}, ThirdAcolyteBridge={CfgEnableThirdAcolyteBridge.Value}");
@@ -676,6 +692,7 @@ namespace SilksongMobileAPI
                 {
                     PlayerData.instance.encounteredSongChevalierBoss = true;
                 }
+                if (mode == LoadSceneMode.Single) IrisRemoteUpdater.OnSceneLoadedForToast(scene.name);
                 bool repackerBusy = AssetHelperBridge.IsExtractingPharloomsGloryScene || AssetHelperBridge.IsAnyRepackerBusy();
                 LogDiagnosticInfo($"[SceneBreadcrumb] SceneLoaded: '{scene.name}' (mode={mode}, activeScene='{SceneManager.GetActiveScene().name}', repackerExtracting={repackerBusy})");
                 if (repackerBusy && !AssetHelperBridge.IsExtractingPharloomsGloryScene && mode == LoadSceneMode.Additive)
@@ -702,6 +719,11 @@ namespace SilksongMobileAPI
                     string.Equals(scene.name, "Ant_Queen", StringComparison.OrdinalIgnoreCase))
                 {
                     AssetHelperBridge.ResetBonemasterRuntimeCaches();
+                }
+
+                if (!repackerBusy && string.Equals(scene.name, "Hang_17b", StringComparison.OrdinalIgnoreCase) && Instance != null)
+                {
+                    try { Instance.StartCoroutine(AssetHelperBridge.CoAttachRebelliousSentinelArenaGuard(scene)); } catch { }
                 }
 
                 if (string.Equals(scene.name, "Menu_Title", StringComparison.OrdinalIgnoreCase))
@@ -764,6 +786,7 @@ namespace SilksongMobileAPI
         private Transform _uGuiModConsoleContentRoot;
         private UnityEngine.UI.Text _uGuiModConsoleStatusText;
         private int _uGuiPageIndex;
+        private readonly HashSet<string> _expandedConfigMods = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private static GameObject CreateUGuiButton(
             Transform parent,
@@ -2053,7 +2076,7 @@ namespace SilksongMobileAPI
             var pImg = _uGuiModConsolePanelGo.GetComponent<UnityEngine.UI.Image>();
             pImg.color = new Color(0.08f, 0.07f, 0.10f, 0.96f);
 
-            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.32)", new Vector2(-120f, 392f), new Vector2(1100f, 44f), 24, new Color(0.96f, 0.86f, 0.62f, 1f), TextAnchor.MiddleLeft);
+            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.43)", new Vector2(-120f, 392f), new Vector2(1100f, 44f), 24, new Color(0.96f, 0.86f, 0.62f, 1f), TextAnchor.MiddleLeft);
 
             CreateUGuiButton(_uGuiModConsolePanelGo.transform, "CloseBtn", "Close [X]", new Vector2(630f, 392f), new Vector2(150f, 44f), new Color(0.50f, 0.14f, 0.18f, 0.96f), Color.white, 18, () => SetShowModPanel(false));
 
@@ -2070,6 +2093,15 @@ namespace SilksongMobileAPI
                     _uGuiPageIndex = 0;
                     RebuildUGuiModConsoleContent();
                 });
+                if (tabId == "Profile")
+                {
+                    var profTabTr = _uGuiModConsolePanelGo.transform.Find("Tab_Profile");
+                    if (profTabTr != null)
+                    {
+                        var blinker = profTabTr.gameObject.AddComponent<IrisUpdateBlinkBehavior>();
+                        blinker.Init(profTabTr.GetComponent<UnityEngine.UI.Image>(), profTabTr.GetComponentInChildren<UnityEngine.UI.Text>(), "Profile", "Profile [UPDATE!]", new Color(0.22f, 0.14f, 0.22f, 0.95f), new Color(0.92f, 0.56f, 0.10f, 0.98f), new Color(0.38f, 0.22f, 0.08f, 0.96f));
+                    }
+                }
             }
 
             _uGuiModConsoleStatusText = CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "Ready.", new Vector2(0f, -395f), new Vector2(1380f, 36f), 17, new Color(0.65f, 0.95f, 0.75f, 1f), TextAnchor.MiddleCenter);
@@ -2327,53 +2359,101 @@ namespace SilksongMobileAPI
             {
                 List<LoadedModConfigEntryInfo> list;
                 lock (_discoveredConfigs) { list = _discoveredConfigs.ToList(); }
+
+                var groupedMods = new List<KeyValuePair<string, List<LoadedModConfigEntryInfo>>>();
+                var groupLookup = new Dictionary<string, List<LoadedModConfigEntryInfo>>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var c = list[i];
+                    string mName = string.IsNullOrEmpty(c.ModName) ? "Unknown" : c.ModName;
+                    if (!groupLookup.TryGetValue(mName, out var bucket))
+                    {
+                        bucket = new List<LoadedModConfigEntryInfo>();
+                        groupLookup[mName] = bucket;
+                        groupedMods.Add(new KeyValuePair<string, List<LoadedModConfigEntryInfo>>(mName, bucket));
+                    }
+                    bucket.Add(c);
+                }
+
+                // Flatten visible dropdown rows: mod header + expanded entries only
+                var visibleRows = new List<(bool IsHeader, string ModName, int ModCount, LoadedModConfigEntryInfo Entry)>();
+                for (int g = 0; g < groupedMods.Count; g++)
+                {
+                    var grp = groupedMods[g];
+                    visibleRows.Add((true, grp.Key, grp.Value.Count, null));
+                    if (_expandedConfigMods.Contains(grp.Key))
+                    {
+                        for (int e = 0; e < grp.Value.Count; e++)
+                        {
+                            visibleRows.Add((false, grp.Key, grp.Value.Count, grp.Value[e]));
+                        }
+                    }
+                }
+
                 const int perPage = 8;
-                int totalPages = Mathf.Max(1, (list.Count + perPage - 1) / perPage);
+                int totalPages = Mathf.Max(1, (visibleRows.Count + perPage - 1) / perPage);
                 _uGuiPageIndex = Mathf.Clamp(_uGuiPageIndex, 0, totalPages - 1);
                 int start = _uGuiPageIndex * perPage;
 
-                for (int i = 0; i < perPage && (start + i) < list.Count; i++)
+                for (int i = 0; i < perPage && (start + i) < visibleRows.Count; i++)
                 {
-                    var item = list[start + i];
+                    var row = visibleRows[start + i];
                     float y = 265f - i * 66f;
-                    CreateUGuiLabel(_uGuiModConsoleContentRoot, $"{item.ModName} | {item.Section}: {item.Key}", new Vector2(-260f, y), new Vector2(820f, 52f), 17, Color.white, TextAnchor.MiddleLeft);
-
-                    var val = item.Entry?.BoxedValue;
-                    string valStr = val?.ToString() ?? "null";
-                    CreateUGuiButton(_uGuiModConsoleContentRoot, "Cfg_" + i, valStr, new Vector2(420f, y), new Vector2(460f, 50f), new Color(0.24f, 0.18f, 0.28f, 0.96f), new Color(0.98f, 0.92f, 0.75f, 1f), 17, () =>
+                    if (row.IsHeader)
                     {
-                        try
+                        string modKey = row.ModName;
+                        bool isExp = _expandedConfigMods.Contains(modKey);
+                        string arrow = isExp ? "v" : ">";
+                        Color hdrCol = isExp ? new Color(0.24f, 0.30f, 0.44f, 0.96f) : new Color(0.18f, 0.17f, 0.26f, 0.96f);
+                        CreateUGuiButton(_uGuiModConsoleContentRoot, "CfgModHdr_" + i, $"  [{arrow}]  {modKey}   ({row.ModCount} settings)", new Vector2(0f, y), new Vector2(1320f, 52f), hdrCol, new Color(0.98f, 0.90f, 0.68f, 1f), 18, () =>
                         {
-                            var curVal = item.Entry.BoxedValue;
-                            if (item.SettingType == typeof(bool) && curVal is bool bVal)
-                                item.Entry.BoxedValue = !bVal;
-                            else if (item.SettingType != null && item.SettingType.IsEnum && curVal != null)
-                            {
-                                var vals = Enum.GetValues(item.SettingType);
-                                int idx = Array.IndexOf(vals, curVal);
-                                item.Entry.BoxedValue = vals.GetValue((idx + 1) % vals.Length);
-                            }
-                            else if (item.SettingType == typeof(int) && curVal is int iVal)
-                                item.Entry.BoxedValue = iVal + 1;
-                            else if (item.SettingType == typeof(float) && curVal is float fVal)
-                                item.Entry.BoxedValue = Mathf.Round((fVal + 0.25f) * 100f) / 100f;
-                            else if (curVal is KeyboardShortcut ks)
-                                BepInEx.MobileVirtualInput.PulseShortcut(ks, true);
-                            else if (curVal is KeyCode kc)
-                                TriggerVirtualKeyFromUi(kc);
+                            if (!_expandedConfigMods.Add(modKey))
+                                _expandedConfigMods.Remove(modKey);
                             RebuildUGuiModConsoleContent();
-                        }
-                        catch (System.Exception __apiEx_11) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("SilksongMobileAPIPlugin", "L1261", __apiEx_11); }
-                    });
+                        });
+                    }
+                    else
+                    {
+                        var item = row.Entry;
+                        CreateUGuiLabel(_uGuiModConsoleContentRoot, $"      {item.Section}: {item.Key}", new Vector2(-240f, y), new Vector2(800f, 50f), 17, Color.white, TextAnchor.MiddleLeft);
+
+                        var val = item.Entry?.BoxedValue;
+                        string valStr = val?.ToString() ?? "null";
+                        CreateUGuiButton(_uGuiModConsoleContentRoot, "Cfg_" + i, valStr, new Vector2(420f, y), new Vector2(460f, 48f), new Color(0.24f, 0.18f, 0.28f, 0.96f), new Color(0.98f, 0.92f, 0.75f, 1f), 17, () =>
+                        {
+                            try
+                            {
+                                var curVal = item.Entry.BoxedValue;
+                                if (item.SettingType == typeof(bool) && curVal is bool bVal)
+                                    item.Entry.BoxedValue = !bVal;
+                                else if (item.SettingType != null && item.SettingType.IsEnum && curVal != null)
+                                {
+                                    var vals = Enum.GetValues(item.SettingType);
+                                    int idx = Array.IndexOf(vals, curVal);
+                                    item.Entry.BoxedValue = vals.GetValue((idx + 1) % vals.Length);
+                                }
+                                else if (item.SettingType == typeof(int) && curVal is int iVal)
+                                    item.Entry.BoxedValue = iVal + 1;
+                                else if (item.SettingType == typeof(float) && curVal is float fVal)
+                                    item.Entry.BoxedValue = Mathf.Round((fVal + 0.25f) * 100f) / 100f;
+                                else if (curVal is KeyboardShortcut ks)
+                                    BepInEx.MobileVirtualInput.PulseShortcut(ks, true);
+                                else if (curVal is KeyCode kc)
+                                    TriggerVirtualKeyFromUi(kc);
+                                RebuildUGuiModConsoleContent();
+                            }
+                            catch (System.Exception __apiEx_11) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("SilksongMobileAPIPlugin", "L1261", __apiEx_11); }
+                        });
+                    }
                 }
 
-                CreateUGuiButton(_uGuiModConsoleContentRoot, "PrevPage", "< Prev Page", new Vector2(-220f, -275f), new Vector2(220f, 48f), new Color(0.22f, 0.22f, 0.28f, 0.95f), Color.white, 17, () =>
+                CreateUGuiButton(_uGuiModConsoleContentRoot, "PrevPage", "< Prev Page", new Vector2(-260f, -275f), new Vector2(220f, 48f), new Color(0.22f, 0.22f, 0.28f, 0.95f), Color.white, 17, () =>
                 {
                     _uGuiPageIndex = Mathf.Max(0, _uGuiPageIndex - 1);
                     RebuildUGuiModConsoleContent();
                 });
-                CreateUGuiLabel(_uGuiModConsoleContentRoot, $"Page {_uGuiPageIndex + 1} / {totalPages} ({list.Count} settings)", new Vector2(0f, -275f), new Vector2(220f, 48f), 17, Color.white, TextAnchor.MiddleCenter);
-                CreateUGuiButton(_uGuiModConsoleContentRoot, "NextPage", "Next Page >", new Vector2(220f, -275f), new Vector2(220f, 48f), new Color(0.22f, 0.22f, 0.28f, 0.95f), Color.white, 17, () =>
+                CreateUGuiLabel(_uGuiModConsoleContentRoot, $"Page {_uGuiPageIndex + 1} / {totalPages} ({groupedMods.Count} mods)", new Vector2(0f, -275f), new Vector2(280f, 48f), 17, Color.white, TextAnchor.MiddleCenter);
+                CreateUGuiButton(_uGuiModConsoleContentRoot, "NextPage", "Next Page >", new Vector2(260f, -275f), new Vector2(220f, 48f), new Color(0.22f, 0.22f, 0.28f, 0.95f), Color.white, 17, () =>
                 {
                     _uGuiPageIndex = Mathf.Min(totalPages - 1, _uGuiPageIndex + 1);
                     RebuildUGuiModConsoleContent();
@@ -2901,11 +2981,11 @@ namespace SilksongMobileAPI
 
             // 3. Missing Mods Prompt + 3-Second Hold-to-Download Option with Filling Animation
             float listTopY = 175f;
-            int perPage = 6;
+            int perPage = 5;
             if (missingFromDevice.Count > 0)
             {
-                listTopY = 105f;
-                perPage = 5;
+                listTopY = 92f;
+                perPage = 4;
 
                 string missingPrompt = IrisProfileManager.IsDownloadingMissingMods
                     ? $"Downloading missing profile mods & dependencies... ({IrisProfileManager.DownloadStatusText})"
@@ -2947,7 +3027,7 @@ namespace SilksongMobileAPI
                 for (int i = 0; i < perPage && (start + i) < unifiedRows.Count; i++)
                 {
                     string rowText = unifiedRows[start + i];
-                    float y = listTopY - i * 56f;
+                    float y = listTopY - i * 54f;
                     Color rCol = Color.white;
                     if (rowText.StartsWith("[SYNCED]", StringComparison.Ordinal))
                         rCol = new Color(0.62f, 0.96f, 0.72f, 1f);
@@ -2967,11 +3047,83 @@ namespace SilksongMobileAPI
                 }
             }
 
-            // 5. Pagination & Profile Path Footer
+            // 5. IRIS Remote API Update Bar (blinks when newer version is uploaded to GitHub)
+            string apiUpdLabel = IrisRemoteUpdater.GetStatusBannerText();
+            Color apiUpdLabelCol = IrisRemoteUpdater.UpdateAppliedPendingRestart
+                ? new Color(0.45f, 0.98f, 0.62f, 1f)
+                : (IrisRemoteUpdater.IsUpdateAvailable ? new Color(1f, 0.82f, 0.32f, 1f) : new Color(0.78f, 0.84f, 0.92f, 1f));
+            CreateUGuiLabel(
+                _uGuiModConsoleContentRoot,
+                apiUpdLabel,
+                new Vector2(-210f, -155f),
+                new Vector2(920f, 44f),
+                16,
+                apiUpdLabelCol,
+                TextAnchor.MiddleLeft);
+
+            string apiBtnText = IrisRemoteUpdater.IsDownloading
+                ? "Updating IRIS..."
+                : (IrisRemoteUpdater.UpdateAppliedPendingRestart
+                    ? "Restart Game to Apply"
+                    : (IrisRemoteUpdater.IsUpdateAvailable
+                        ? $"UPDATE IRIS -> v{IrisRemoteUpdater.RemoteVersionText}"
+                        : (IrisRemoteUpdater.IsChecking ? "Checking..." : "Check API Update")));
+            Color apiBtnCol = IrisRemoteUpdater.UpdateAppliedPendingRestart
+                ? new Color(0.16f, 0.46f, 0.24f, 0.96f)
+                : (IrisRemoteUpdater.IsUpdateAvailable ? new Color(0.88f, 0.50f, 0.08f, 0.98f) : new Color(0.20f, 0.28f, 0.40f, 0.96f));
+            CreateUGuiButton(
+                _uGuiModConsoleContentRoot,
+                "Prof_ApiRemoteUpdate",
+                apiBtnText,
+                new Vector2(460f, -155f),
+                new Vector2(410f, 44f),
+                apiBtnCol,
+                Color.white,
+                16,
+                () =>
+                {
+                    if (IrisRemoteUpdater.IsDownloading || IrisRemoteUpdater.IsChecking) return;
+                    if (IrisRemoteUpdater.UpdateAppliedPendingRestart)
+                    {
+                        if (_uGuiModConsoleStatusText != null)
+                            _uGuiModConsoleStatusText.text = IrisRemoteUpdater.StatusMessage;
+                        return;
+                    }
+                    if (IrisRemoteUpdater.IsUpdateAvailable)
+                    {
+                        IrisRemoteUpdater.StartDownloadAndApplyUpdate(() =>
+                        {
+                            if (_uGuiModConsoleStatusText != null)
+                                _uGuiModConsoleStatusText.text = IrisRemoteUpdater.StatusMessage;
+                            RebuildUGuiModConsoleContent();
+                        });
+                    }
+                    else
+                    {
+                        IrisRemoteUpdater.StartCheckForUpdates(() =>
+                        {
+                            if (_uGuiModConsoleStatusText != null)
+                                _uGuiModConsoleStatusText.text = IrisRemoteUpdater.StatusMessage;
+                            RebuildUGuiModConsoleContent();
+                        });
+                    }
+                    RebuildUGuiModConsoleContent();
+                });
+            if (IrisRemoteUpdater.IsUpdateAvailable && !IrisRemoteUpdater.IsDownloading && !IrisRemoteUpdater.UpdateAppliedPendingRestart)
+            {
+                var updBtnTr = _uGuiModConsoleContentRoot.Find("Prof_ApiRemoteUpdate");
+                if (updBtnTr != null)
+                {
+                    var updBlink = updBtnTr.gameObject.AddComponent<IrisUpdateBlinkBehavior>();
+                    updBlink.Init(updBtnTr.GetComponent<UnityEngine.UI.Image>(), null, apiBtnText, apiBtnText, apiBtnCol, new Color(0.98f, 0.62f, 0.12f, 0.98f), new Color(0.42f, 0.22f, 0.06f, 0.96f));
+                }
+            }
+
+            // 6. Pagination & Profile Path Footer
             CreateUGuiLabel(
                 _uGuiModConsoleContentRoot,
                 $"Stored at:  {IrisProfileManager.ProfileFilePath}   (also mirrored in BepInEx/config/iris_profile.jsonc)",
-                new Vector2(0f, -232f),
+                new Vector2(0f, -218f),
                 new Vector2(1360f, 30f),
                 15,
                 new Color(0.72f, 0.86f, 0.98f, 1f),
@@ -3929,8 +4081,12 @@ namespace SilksongMobileAPI
             {
                 LogDiagnosticWarn($"[Profile] Startup profile init notice: {exProf.Message}");
             }
-            LogDiagnosticInfo($"IRIS v2.9.8.32 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
+            LogDiagnosticInfo($"IRIS v2.9.8.43 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
             AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting();
+            if (CfgEnableRemoteUpdateCheck?.Value ?? true)
+            {
+                try { IrisRemoteUpdater.ScheduleStartupCheck(); } catch { }
+            }
                 try { AssetHelperBridge.EnsureHkCoreAddressablesSceneBridgeRegistered(); } catch { }
                 try { Instance?.SetupButtons(); } catch { }
             FlushAsyncDiagnosticLogs();
@@ -4605,7 +4761,7 @@ namespace SilksongMobileAPI
 
                 _panelRect.x = Mathf.Clamp(_panelRect.x, 16f, Mathf.Max(16f, vWidth - _panelRect.width - 16f));
                 _panelRect.y = Mathf.Clamp(_panelRect.y, 16f, Mathf.Max(16f, vHeight - _panelRect.height - 16f));
-                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.32)", _styleWindow);
+                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.43)", _styleWindow);
             }
             catch (System.Exception __apiEx_46) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("SilksongMobileAPIPlugin", "L2463", __apiEx_46); }
             finally
@@ -4815,7 +4971,16 @@ namespace SilksongMobileAPI
             }
             GUILayout.Space(6f);
 
-            if (GUILayout.Button(_selectedModTab == "Profile" ? "> Profile (.jsonc)" : "  Profile (.jsonc)", _selectedModTab == "Profile" ? _styleTabBtnActive : _styleTabBtn, GUILayout.Height(56f)))
+            Color _prevProfGuiCol = GUI.color;
+            bool _blinkProfImGui = IrisRemoteUpdater.IsUpdateAvailable && !IrisRemoteUpdater.UpdateAppliedPendingRestart;
+            if (_blinkProfImGui)
+                GUI.color = (Mathf.Sin(Time.unscaledTime * 6f) > 0f) ? new Color(1f, 0.78f, 0.25f, 1f) : new Color(0.75f, 0.45f, 0.15f, 1f);
+            string _profTabTxt = _blinkProfImGui
+                ? (_selectedModTab == "Profile" ? "> Profile [UPDATE!]" : "  Profile [UPDATE!]")
+                : (_selectedModTab == "Profile" ? "> Profile (.jsonc)" : "  Profile (.jsonc)");
+            bool _clickedProfTab = GUILayout.Button(_profTabTxt, _selectedModTab == "Profile" ? _styleTabBtnActive : _styleTabBtn, GUILayout.Height(56f));
+            GUI.color = _prevProfGuiCol;
+            if (_clickedProfTab)
             {
                 IrisProfileManager.EnsureLoaded();
                 _selectedModTab = "Profile";
@@ -5081,7 +5246,15 @@ namespace SilksongMobileAPI
                     {
                         foreach (var group in _discoveredConfigs.GroupBy(c => c.ModName))
                         {
-                            GUILayout.Label($"=== {group.Key} ===");
+                            string modKey = string.IsNullOrEmpty(group.Key) ? "Unknown" : group.Key;
+                            bool isExp = _expandedConfigMods.Contains(modKey);
+                            if (GUILayout.Button($"{(isExp ? "[-] " : "[+] ")}{modKey} ({group.Count()} settings)", GUILayout.Height(36f)))
+                            {
+                                if (!_expandedConfigMods.Add(modKey))
+                                    _expandedConfigMods.Remove(modKey);
+                                isExp = !isExp;
+                            }
+                            if (!isExp) continue;
                             foreach (var item in group)
                             {
                                 GUILayout.BeginHorizontal("box");
@@ -5703,7 +5876,8 @@ namespace SilksongMobileAPI
             "Brewing Fleabrew At The Halfway Home",
             "Sharpening Every Crest On The Workbench",
             "Politely Asking The Last Judge To Calm Down",
-            "Download More RAM? No, Just Optimizing IL2CPP",
+            "Adding another Oblobble",
+            "Inviteth Rouls Kard",
             "Warming Up The Bench In Bonebottom",
             "Untangling Silk Threads Inside The Citadel",
             "Convincing Trobbio To Tone Down The Fireworks",
@@ -5959,14 +6133,14 @@ namespace SilksongMobileAPI
             var topStrip = CreatePanel(rootRect, "TopLetterboxStrip", new Vector2(0f, 504f), new Vector2(1920f, 72f), colStripBg).rectTransform;
             CreatePanel(topStrip, "TopStripBorder", new Vector2(0f, -36f), new Vector2(1920f, 1.5f), colBorder);
 
-            // Left Square Indicator + "IRIS v2.9.8.32"
+            // Left Square Indicator + "IRIS v2.9.8.43"
             CreatePanel(topStrip, "TopSquareDot", new Vector2(-896f, 0f), new Vector2(10f, 10f), colPrimary);
             _topVersionTextComp = CreateLabel(
                 topStrip,
                 "TopVersionLabel",
                 new Vector2(-420f, 0f),
                 new Vector2(920f, 40f),
-                "IRIS v2.9.8.32",
+                "IRIS v2.9.8.43",
                 20,
                 FontStyle.Bold,
                 colPrimary,
@@ -6037,7 +6211,7 @@ namespace SilksongMobileAPI
                 "BottomStepBadgeText",
                 Vector2.zero,
                 new Vector2(176f, 32f),
-                "IRIS v2.9.8.32",
+                "IRIS v2.9.8.43",
                 15,
                 FontStyle.Bold,
                 colDim,
@@ -6132,7 +6306,7 @@ namespace SilksongMobileAPI
                 "DisclaimerFooterLeft",
                 new Vector2(-420f, -328f),
                 new Vector2(680f, 36f),
-                "IRIS v2.9.8.32  //  PC MOD COMPATIBILITY LAYER",
+                "IRIS v2.9.8.43  //  PC MOD COMPATIBILITY LAYER",
                 17,
                 FontStyle.Bold,
                 colMuted,
@@ -6327,7 +6501,7 @@ namespace SilksongMobileAPI
                 _showingDisclaimer = false;
                 _watchdogElapsed = 0f;
             }
-            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.32)...");
+            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.43)...");
             TrySetBackgroundLoadingPriority(ThreadPriority.High);
             yield return null;
 

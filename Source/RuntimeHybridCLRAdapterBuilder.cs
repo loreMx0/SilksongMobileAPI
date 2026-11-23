@@ -2395,7 +2395,7 @@ namespace SilksongMobileAPI
             // Pale Automaton parry freeze frame (matches Aeternal Everwatcher: FreezeMomentTypes.NailClashEffect = 3)
             if (!isPrefix &&
                 (SilksongMobileAPIPlugin.CfgPaleAutomatonParryFreeze?.Value ?? true) &&
-                AssetHelperBridge.IsPaleAutomatonBossSceneActive())
+                AssetHelperBridge.IsPaleAutomatonBossSceneActive(dh))
             {
                 try
                 {
@@ -2450,6 +2450,10 @@ namespace SilksongMobileAPI
                 {
                     SilksongMobileAPIPlugin.LogModException(p.ModName, $"NailClashBridge.{(isPrefix ? "Prefix" : "Postfix")}({p.Method.Name})", ex);
                 }
+            }
+            if (!isPrefix)
+            {
+                AssetHelperBridge.OnPaleAutomatonCombatEvent(null, dh, "NailClash");
             }
         }
 

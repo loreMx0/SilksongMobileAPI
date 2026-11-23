@@ -5930,22 +5930,429 @@ namespace SilksongMobileAPI
             }
         }
 
-        public static bool IsPaleAutomatonBossSceneActive()
+        private static FieldInfo _paSongKnightField;
+
+        public static bool IsPaleAutomatonBossSceneActive(DamageHero dh = null)
         {
             try
             {
+                // Pale Automaton exclusively fights in Arborium_11 (never Hang_17b or other Second Sentinel arenas).
+                var activeScene = SceneManager.GetActiveScene();
+                if (!activeScene.IsValid() || !string.Equals(activeScene.name, "Arborium_11", StringComparison.Ordinal))
+                    return false;
+
                 if (!_paBossSceneFieldLookedUp)
                 {
                     var pluginType = HarmonyBridge.ResolveTypeRobust("PaleAutomaton.PaleAutomatonPlugin");
                     if (pluginType == null) return false;
                     _paBossSceneFieldLookedUp = true;
                     _paBossSceneField = pluginType.GetField("bossScene", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                    _paSongKnightField = pluginType.GetField("songKnight", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                 }
-                if (_paBossSceneField != null && _paBossSceneField.GetValue(null) is bool isBoss)
-                    return isBoss;
+
+                if (_paBossSceneField == null || !(_paBossSceneField.GetValue(null) is bool isBoss) || !isBoss)
+                    return false;
+
+                if (_paSongKnightField == null)
+                    return false;
+
+                var sk = _paSongKnightField.GetValue(null) as GameObject;
+                if (sk == null || (UnityEngine.Object)sk == null || !sk.activeInHierarchy ||
+                    !string.Equals(sk.scene.name, "Arborium_11", StringComparison.Ordinal))
+                    return false;
+
+                if (dh != null)
+                {
+                    var dhGo = dh.gameObject;
+                    if (dhGo == null || !string.Equals(dhGo.scene.name, "Arborium_11", StringComparison.Ordinal))
+                        return false;
+
+                    if (!dh.transform.IsChildOf(sk.transform))
+                    {
+                        var rootObj = dh.transform.root != null ? dh.transform.root.gameObject : dhGo;
+                        string rName = rootObj != null ? (rootObj.name ?? "") : "";
+                        string dName = dhGo.name ?? "";
+                        bool isPaAttack =
+                            rName.IndexOf("Song Knight", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            rName.IndexOf("CrossSlash", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            dName.IndexOf("Song Knight", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            dName.IndexOf("CrossSlash", StringComparison.OrdinalIgnoreCase) >= 0;
+                        if (!isPaAttack)
+                            return false;
+                    }
+                }
+
+                return true;
             }
             catch { }
             return false;
+        }
+
+        private static bool _paPhaseFieldsLookedUp;
+        private static FieldInfo _paHealthManagerField;
+        private static FieldInfo _paControlFsmField;
+        private static FieldInfo _paPhase2Field;
+        private static FieldInfo _paPhase3Field;
+        private static FieldInfo _paPhase4Field;
+        private static FieldInfo _paPhase2ThreshField;
+        private static FieldInfo _paPhase3ThreshField;
+        private static FieldInfo _paPhase4ThreshField;
+        private static FieldInfo _paCustomBehavCrossSlashField;
+        private static MethodInfo _paPhaseCheckMi;
+        private static int _paDiagEventCount;
+        private static int _paBelowP2Hits;
+        private static float _paBelowP2FirstTime;
+        private static int _paBelowP3Hits;
+        private static float _paBelowP3FirstTime;
+        private static bool _paPhase2FallbackFired;
+        private static bool _paPhase3FallbackFired;
+        private static readonly string[] _paPhaseCheckStateNames = new string[]
+        {
+            "Set DiveSlash", "Set Dash Attack", "Set Wind Slash", "Set CrossSlash", "Set Rising Slash"
+        };
+
+        private static void EnsurePaleAutomatonPhaseFieldsResolved()
+        {
+            if (_paPhaseFieldsLookedUp) return;
+            _paPhaseFieldsLookedUp = true;
+            try
+            {
+                const BindingFlags SFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+                var pluginType = HarmonyBridge.ResolveTypeRobust("PaleAutomaton.PaleAutomatonPlugin");
+                if (pluginType != null)
+                {
+                    _paHealthManagerField = pluginType.GetField("healthManager", SFlags);
+                    _paControlFsmField = pluginType.GetField("controlFsm", SFlags);
+                    _paPhase2Field = pluginType.GetField("PHASE_2", SFlags);
+                    _paPhase3Field = pluginType.GetField("PHASE_3", SFlags);
+                    _paPhase4Field = pluginType.GetField("PHASE_4", SFlags);
+                    _paPhase2ThreshField = pluginType.GetField("PHASE_2_THRESHOLD", SFlags);
+                    _paPhase3ThreshField = pluginType.GetField("PHASE_3_THRESHOLD", SFlags);
+                    _paPhase4ThreshField = pluginType.GetField("PHASE_4_THRESHOLD", SFlags);
+                    _paPhaseCheckMi = pluginType.GetMethod("PhaseCheck", SFlags, null, Type.EmptyTypes, null);
+                }
+                var cbType = HarmonyBridge.ResolveTypeRobust("PaleAutomaton.CustomBehaviour");
+                if (cbType != null)
+                {
+                    _paCustomBehavCrossSlashField = cbType.GetField("crossSlashSetup", SFlags);
+                }
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogApiCatch("AssetHelperBridge", "EnsurePaleAutomatonPhaseFieldsResolved", ex);
+            }
+        }
+
+        public static void ResetPaleAutomatonPhaseDiagState()
+        {
+            _paDiagEventCount = 0;
+            _paBelowP2Hits = 0;
+            _paBelowP2FirstTime = -1f;
+            _paBelowP3Hits = 0;
+            _paBelowP3FirstTime = -1f;
+            _paPhase2FallbackFired = false;
+            _paPhase3FallbackFired = false;
+        }
+
+        private static bool IsFsmImmediateTransitionAction(HutongGames.PlayMaker.FsmStateAction act)
+        {
+            if (act == null) return false;
+            string tn = act.GetType().Name;
+            return tn.StartsWith("SendEvent", StringComparison.Ordinal) ||
+                   tn.StartsWith("SendRandomEvent", StringComparison.Ordinal) ||
+                   string.Equals(tn, "NextFrameEvent", StringComparison.Ordinal);
+        }
+
+        private static bool InspectAndHoistPaleAutomatonPhaseCheckStates(PlayMakerFSM ctrlFsm, out int hoistedCount, out string summary)
+        {
+            hoistedCount = 0;
+            bool anyMissingLambda = false;
+            var parts = new List<string>(_paPhaseCheckStateNames.Length);
+            if (ctrlFsm == null || ctrlFsm.Fsm == null)
+            {
+                summary = "no-fsm";
+                return false;
+            }
+            for (int i = 0; i < _paPhaseCheckStateNames.Length; i++)
+            {
+                string stName = _paPhaseCheckStateNames[i];
+                var st = ctrlFsm.Fsm.GetState(stName);
+                if (st == null)
+                {
+                    parts.Add($"{stName}=MISSING");
+                    continue;
+                }
+                var acts = PlayMakerHybridCLRBridge.GetStateActionsSafe(st);
+                if (acts == null || acts.Length == 0)
+                {
+                    anyMissingLambda = true;
+                    parts.Add($"{stName}=0");
+                    continue;
+                }
+                int firstSendIdx = -1;
+                int lastLambdaIdx = -1;
+                int lambdaCount = 0;
+                for (int a = 0; a < acts.Length; a++)
+                {
+                    if (acts[a] == null) continue;
+                    if (firstSendIdx < 0 && IsFsmImmediateTransitionAction(acts[a]))
+                        firstSendIdx = a;
+                    if (acts[a] is Silksong.FsmUtil.Actions.LambdaAction)
+                    {
+                        lambdaCount++;
+                        lastLambdaIdx = a;
+                    }
+                }
+                if (lambdaCount == 0)
+                {
+                    anyMissingLambda = true;
+                }
+                else if (firstSendIdx >= 0 && lastLambdaIdx > firstSendIdx &&
+                         (SilksongMobileAPIPlugin.CfgPaleAutomatonPhaseGuard?.Value ?? true))
+                {
+                    var reordered = new HutongGames.PlayMaker.FsmStateAction[acts.Length];
+                    int dst = 0;
+                    for (int a = 0; a < acts.Length; a++)
+                    {
+                        if (acts[a] is Silksong.FsmUtil.Actions.LambdaAction)
+                            reordered[dst++] = acts[a];
+                    }
+                    for (int a = 0; a < acts.Length; a++)
+                    {
+                        if (!(acts[a] is Silksong.FsmUtil.Actions.LambdaAction))
+                            reordered[dst++] = acts[a];
+                    }
+                    PlayMakerHybridCLRBridge.SetStateActionsSafe(st, reordered);
+                    hoistedCount++;
+                }
+                parts.Add($"{stName}:{acts.Length}(L={lambdaCount},S={firstSendIdx})");
+            }
+            summary = string.Join(", ", parts);
+            return anyMissingLambda;
+        }
+
+        public static void OnPaleAutomatonCombatEvent(HealthManager hm, DamageHero dh, string source)
+        {
+            if (!IsPaleAutomatonBossSceneActive(dh)) return;
+            try
+            {
+                EnsurePaleAutomatonPhaseFieldsResolved();
+                var paHm = _paHealthManagerField?.GetValue(null) as HealthManager;
+                if (paHm == null || (UnityEngine.Object)paHm == null) return;
+                if (hm != null && !ReferenceEquals(hm, paHm)) return;
+
+                int p2Thresh = _paPhase2ThreshField != null && _paPhase2ThreshField.GetValue(null) is int t2 ? t2 : 1600;
+                int p3Thresh = _paPhase3ThreshField != null && _paPhase3ThreshField.GetValue(null) is int t3 ? t3 : 800;
+                int p4Thresh = _paPhase4ThreshField != null && _paPhase4ThreshField.GetValue(null) is int t4 ? t4 : 400;
+                bool p2 = _paPhase2Field != null && _paPhase2Field.GetValue(null) is bool b2 && b2;
+                bool p3 = _paPhase3Field != null && _paPhase3Field.GetValue(null) is bool b3 && b3;
+                bool p4 = _paPhase4Field != null && _paPhase4Field.GetValue(null) is bool b4 && b4;
+
+                if (string.Equals(source, "NailClash", StringComparison.Ordinal))
+                {
+                    int minParry = SilksongMobileAPIPlugin.CfgPaleAutomatonMinParryDamage?.Value ?? 10;
+                    if (minParry > 0)
+                    {
+                        int baseParry = (PlayerData.instance != null) ? (PlayerData.instance.nailDamage / 2) : 0;
+                        int extra = minParry - baseParry;
+                        if (extra > 0)
+                        {
+                            int floor = p4 ? 1 : (p3 ? p4Thresh : (p2 ? p3Thresh : p2Thresh));
+                            if (paHm.hp > floor)
+                            {
+                                paHm.hp = Math.Max(floor, paHm.hp - extra);
+                            }
+                        }
+                    }
+                }
+
+                int hp = paHm.hp;
+                var ctrlFsm = _paControlFsmField?.GetValue(null) as PlayMakerFSM;
+                string curState = ctrlFsm != null ? (ctrlFsm.ActiveStateName ?? "") : "";
+
+                if (_paDiagEventCount < 5)
+                {
+                    _paDiagEventCount++;
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[PaleAutomatonDiag] {source}[{_paDiagEventCount}]: hp={hp}, p2T={p2Thresh}, p3T={p3Thresh}, p2={p2}, p3={p3}, state='{curState}'.");
+                }
+
+                if (!p2 && hp <= p2Thresh)
+                {
+                    _paBelowP2Hits++;
+                    if (_paBelowP2FirstTime < 0f)
+                    {
+                        _paBelowP2FirstTime = Time.unscaledTime;
+                        SilksongMobileAPIPlugin.LogDiagnosticInfo($"[PaleAutomatonDiag] Crossed Phase 2 threshold via {source}: hp={hp} <= {p2Thresh} (state='{curState}').");
+                    }
+                    if ((SilksongMobileAPIPlugin.CfgPaleAutomatonPhaseGuard?.Value ?? true) &&
+                        !_paPhase2FallbackFired &&
+                        _paPhaseCheckMi != null)
+                    {
+                        _paPhase2FallbackFired = true;
+                        _paPhaseCheckMi.Invoke(null, null);
+                        bool p2Now = _paPhase2Field != null && _paPhase2Field.GetValue(null) is bool b2n && b2n;
+                        string stNow = ctrlFsm != null ? (ctrlFsm.ActiveStateName ?? "") : "";
+                        SilksongMobileAPIPlugin.LogDiagnosticInfo($"[PaleAutomatonGuard] Invoked fallback PhaseCheck() for Phase 2 via {source} (hp={hp}, thresh2={p2Thresh}, p2Now={p2Now}, state='{stNow}').");
+                    }
+                }
+                else if (p2 && !p3 && hp <= p3Thresh)
+                {
+                    var csSetup = _paCustomBehavCrossSlashField?.GetValue(null) as UnityEngine.Object;
+                    if (csSetup != null)
+                    {
+                        _paBelowP3Hits++;
+                        if (_paBelowP3FirstTime < 0f)
+                        {
+                            _paBelowP3FirstTime = Time.unscaledTime;
+                            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[PaleAutomatonDiag] Crossed Phase 3 threshold via {source}: hp={hp} <= {p3Thresh} (state='{curState}').");
+                        }
+                        if ((SilksongMobileAPIPlugin.CfgPaleAutomatonPhaseGuard?.Value ?? true) &&
+                            !_paPhase3FallbackFired &&
+                            _paPhaseCheckMi != null)
+                        {
+                            _paPhase3FallbackFired = true;
+                            _paPhaseCheckMi.Invoke(null, null);
+                            bool p3Now = _paPhase3Field != null && _paPhase3Field.GetValue(null) is bool b3n && b3n;
+                            string stNow = ctrlFsm != null ? (ctrlFsm.ActiveStateName ?? "") : "";
+                            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[PaleAutomatonGuard] Invoked fallback PhaseCheck() for Phase 3 via {source} (hp={hp}, thresh3={p3Thresh}, p3Now={p3Now}, state='{stNow}').");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogApiCatch("AssetHelperBridge", "OnPaleAutomatonCombatEvent", ex);
+            }
+        }
+
+        public sealed class RebelliousSentinelArenaGuard : MonoBehaviour
+        {
+            // Trigger re-entry ONLY when Song Knight is strictly outside Hang_17b's outer walls/floor/ceiling.
+            // Never touches position, velocity, or FSM during normal attacks inside [27.5..51.5, 4.0..25.0].
+            private const float OobMinX = 27.5f;
+            private const float OobMaxX = 51.5f;
+            private const float OobMinY = 4.0f;
+            private const float OobMaxY = 25.0f;
+            private const float SafeMinX = 32.0f;
+            private const float SafeMaxX = 47.0f;
+            private const float ReentryFloorY = 6.2f;
+            private const float RescueCooldown = 0.75f;
+
+            private PlayMakerFSM _controlFsm;
+            private FieldInfo _hpRecheckField;
+            private FieldInfo _rotateDoneField;
+            private bool _armed;
+            private float _lastRescueTime = -10f;
+            private int _rescueCount;
+
+            private void Awake()
+            {
+                try
+                {
+                    _controlFsm = FSMUtility.LocateMyFSM(gameObject, "Control");
+                    var ssType = HarmonyBridge.ResolveTypeRobust("RebelliousSecondSentinel.SecondSentinel");
+                    if (ssType != null)
+                    {
+                        const BindingFlags SFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+                        _hpRecheckField = ssType.GetField("hpRecheck", SFlags);
+                        _rotateDoneField = ssType.GetField("rotateDone", SFlags);
+                    }
+                }
+                catch { }
+            }
+
+            private void LateUpdate()
+            {
+                var tr = transform;
+                Vector3 pos = tr.position;
+
+                // Stay disarmed during intro/spawn so Song Knight enters the arena naturally.
+                if (!_armed)
+                {
+                    bool fightStarted = _hpRecheckField == null ||
+                        (_hpRecheckField.GetValue(null) is bool b && b);
+                    if (fightStarted && pos.x >= SafeMinX && pos.x <= SafeMaxX && pos.y >= 5.5f && pos.y <= 19.0f)
+                        _armed = true;
+                    return;
+                }
+
+                if (pos.x < OobMinX || pos.x > OobMaxX || pos.y < OobMinY || pos.y > OobMaxY)
+                {
+                    float now = Time.time;
+                    if (now - _lastRescueTime < RescueCooldown) return;
+                    _lastRescueTime = now;
+
+                    // Cleanly stop RotateOverTime if it was the coroutine carrying him out of bounds.
+                    try { _rotateDoneField?.SetValue(null, true); } catch { }
+
+                    float rx = Mathf.Clamp(pos.x, SafeMinX, SafeMaxX);
+                    tr.localEulerAngles = Vector3.zero;
+                    tr.position = new Vector3(rx, ReentryFloorY, pos.z);
+
+                    // Re-enter the room immediately performing an attack so he never stalls or slides.
+                    if (_controlFsm != null)
+                    {
+                        string reentryState = ((_rescueCount++ & 1) == 0) ? "Dash Slash Antic" : "CS Jump Antic";
+                        try { _controlFsm.SetState(reentryState); } catch { }
+                    }
+                }
+            }
+        }
+
+        private static Transform FindChildNamedRecursive(Transform parent, string targetName)
+        {
+            if (parent == null) return null;
+            if (string.Equals(parent.name, targetName, StringComparison.Ordinal)) return parent;
+            int childCount = parent.childCount;
+            for (int i = 0; i < childCount; i++)
+            {
+                var found = FindChildNamedRecursive(parent.GetChild(i), targetName);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        public static IEnumerator CoAttachRebelliousSentinelArenaGuard(Scene hangScene)
+        {
+            if (SilksongMobileAPIPlugin.CfgClampRebelliousSentinelArena != null &&
+                !SilksongMobileAPIPlugin.CfgClampRebelliousSentinelArena.Value)
+                yield break;
+
+            if (HarmonyBridge.ResolveTypeRobust("RebelliousSecondSentinel.SecondSentinel") == null)
+                yield break;
+
+            for (int attempt = 0; attempt < 20; attempt++)
+            {
+                if (!hangScene.IsValid() || !hangScene.isLoaded) yield break;
+
+                Transform skTr = null;
+                try
+                {
+                    var roots = hangScene.GetRootGameObjects();
+                    if (roots != null)
+                    {
+                        for (int i = 0; i < roots.Length && skTr == null; i++)
+                        {
+                            if (roots[i] != null)
+                                skTr = FindChildNamedRecursive(roots[i].transform, "Song Knight");
+                        }
+                    }
+                }
+                catch { }
+
+                if (skTr != null && skTr.gameObject != null)
+                {
+                    var go = skTr.gameObject;
+                    if (go.GetComponent<RebelliousSentinelArenaGuard>() == null)
+                    {
+                        go.AddComponent<RebelliousSentinelArenaGuard>();
+                        SilksongMobileAPIPlugin.LogDiagnosticInfo("[RebelliousSentinelGuard] Attached OOB attack re-entry guard (trigger outside [27.5..51.5, 4.0..25.0], arms after First Idle) to Song Knight in Hang_17b.");
+                    }
+                    yield break;
+                }
+
+                yield return new WaitForSeconds(0.25f);
+            }
         }
 
         private static IEnumerator CoEnsurePaleAutomatonArenaActive()
@@ -5955,6 +6362,7 @@ namespace SilksongMobileAPI
             if (paPluginType == null) yield break;
 
             _paleAutomatonCoroutineRunning = true;
+            ResetPaleAutomatonPhaseDiagState();
             try
             {
                 SyncPaleAutomatonParryFreezeSetting();
@@ -6182,6 +6590,32 @@ namespace SilksongMobileAPI
                         catch (Exception exSetup)
                         {
                             SilksongMobileAPIPlugin.LogModException("PaleAutomaton", "VerifyOrReapplySetupPaleAutomaton", exSetup);
+                        }
+                        int hoistedPhaseStates = 0;
+                        string phaseStatesSummary = "";
+                        try
+                        {
+                            bool missingPhaseLambda = InspectAndHoistPaleAutomatonPhaseCheckStates(ctrlFsm, out hoistedPhaseStates, out phaseStatesSummary);
+                            if (missingPhaseLambda && !reappliedSetup)
+                            {
+                                var setupMi2 = paPluginType.GetMethod("SetupPaleAutomaton", SFlags);
+                                if (setupMi2 != null)
+                                {
+                                    setupMi2.Invoke(null, null);
+                                    reappliedSetup = true;
+                                    InspectAndHoistPaleAutomatonPhaseCheckStates(ctrlFsm, out hoistedPhaseStates, out phaseStatesSummary);
+                                }
+                            }
+                            EnsurePaleAutomatonPhaseFieldsResolved();
+                            var hmDiag = _paHealthManagerField?.GetValue(null) as HealthManager;
+                            int hpDiag = hmDiag != null ? hmDiag.hp : -1;
+                            int p2TDiag = _paPhase2ThreshField != null && _paPhase2ThreshField.GetValue(null) is int dt2 ? dt2 : -1;
+                            bool p2Diag = _paPhase2Field != null && _paPhase2Field.GetValue(null) is bool db2 && db2;
+                            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[PaleAutomatonDiag] Pre-wake: hp={hpDiag}, p2Thresh={p2TDiag}, p2={p2Diag}, hoisted={hoistedPhaseStates}, states=[{phaseStatesSummary}].");
+                        }
+                        catch (Exception exPhaseDiag)
+                        {
+                            SilksongMobileAPIPlugin.LogApiCatch("AssetHelperBridge", "PaleAutomatonPhaseStateInspect", exPhaseDiag);
                         }
                         SilksongMobileAPIPlugin.LogDiagnosticInfo($"[AssetHelperBridge] Configured PaleAutomaton Song Knight in Arborium_11 after Fsm.Started (state='{ctrlFsm.ActiveStateName}', pos={skGo.transform.position}, forcedInit={forcedFsmInitThisTick}, encWakeLambdas={encWakeLambdas}, reappliedSetup={reappliedSetup}).");
                     }

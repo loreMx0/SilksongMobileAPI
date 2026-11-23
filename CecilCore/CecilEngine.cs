@@ -234,13 +234,13 @@ namespace SilksongMobileAPI.CecilCore
                         {
                             foreach (var oldName in new[] { ".cecil_cache_v2428", ".cecil_cache_v2429", ".cecil_cache_v2430", ".cecil_cache_v2432", ".cecil_cache_v250", ".cecil_cache_v251", ".cecil_cache_v251a", ".cecil_cache_v252", ".cecil_cache_v255", ".cecil_cache_v257", ".cecil_cache_v258", ".cecil_cache_v259", ".cecil_cache_v260", ".cecil_cache_v261", ".cecil_cache_v262", ".cecil_cache_v263", ".cecil_cache_v264", ".cecil_cache_v265", ".cecil_cache_v266", ".cecil_cache_v267", ".cecil_cache_v268", ".cecil_cache_v269", ".cecil_cache_v275", ".cecil_cache_v280", ".cecil_cache_v281", ".cecil_cache_v282", ".cecil_cache_v283", ".cecil_cache_v284", ".cecil_cache_v285", ".cecil_cache_v286", ".cecil_cache_v287", ".cecil_cache_v289", ".cecil_cache_v290", ".cecil_cache_v292", ".cecil_cache_v293", ".cecil_cache_v294", ".cecil_cache_v295", ".cecil_cache_v296", ".cecil_cache_v2961", ".cecil_cache_v2962", ".cecil_cache_v2963", ".cecil_cache_v2964", ".cecil_cache_v2965", ".cecil_cache_v2966", ".cecil_cache_v2967", ".cecil_cache_v2968", ".cecil_cache_v29614", ".cecil_cache_v29615", ".cecil_cache_v29618", ".cecil_cache_v29620", ".cecil_cache_v29625", ".cecil_cache_v29626", ".cecil_cache_v2983", ".cecil_cache_v2984", ".cecil_cache_v2986" })
                             {
-                                if (oldName == ".cecil_cache_v29832") continue;
+                                if (oldName == ".cecil_cache_v29839") continue;
                                 string oldP = Path.Combine(parentDir, oldName);
                                 if (Directory.Exists(oldP)) Directory.Delete(oldP, true);
                             }
                         }
                         catch { }
-                        cacheDir = Path.Combine(parentDir, ".cecil_cache_v29832");
+                        cacheDir = Path.Combine(parentDir, ".cecil_cache_v29839");
                         ulong fnv = ComputeFnv1a64(rawBytes);
                         string modeTag = preAlreadyLoaded ? "rt" : "std";
                         cachePrefix = Path.Combine(cacheDir, $"{shortFileName}_{rawBytes.Length}_{fnv:X16}_{modeTag}");
@@ -4763,6 +4763,16 @@ namespace SilksongMobileAPI.CecilCore
                             md.Body.Variables.Clear();
                             md.Body.ExceptionHandlers.Clear();
                             il.Emit(OpCodes.Ldc_I4_0);
+                            il.Emit(OpCodes.Ret);
+                            count++;
+                        }
+                        else if (td.FullName == "ThirdAcolyte.World.Shelf" && md.Name == "Init" && md.Parameters.Count == 0 && md.ReturnType.FullName == "System.Void")
+                        {
+                            // Prevent ThirdAcolyte.World.Shelf from loading Hang_07 (4,113 handles) concurrently on Menu_Title while FastPreloaderUI loads Cradle_03 on Loading.Preload;
+                            // AssetHelperBridge.CoEnsureThirdAcolyteShelfPreloaded() runs serially inside FastPreloaderUI instead.
+                            md.Body.Instructions.Clear();
+                            md.Body.Variables.Clear();
+                            md.Body.ExceptionHandlers.Clear();
                             il.Emit(OpCodes.Ret);
                             count++;
                         }

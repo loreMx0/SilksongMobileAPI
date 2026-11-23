@@ -3,10 +3,11 @@ bin/
 obj/
 .tmp_build/
 00_SilksongMobileAPI/
-00_IRIS/*.dll
 
 # Compiled assemblies and binaries
 *.dll
+!00_IRIS/IRIS.dll
+!00_IRIS/plugin.json
 *.exe
 *.so
 *.dylib
