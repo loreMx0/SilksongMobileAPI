@@ -7597,6 +7597,76 @@ namespace WishUtil
     }
 }
 
+namespace System.Collections.Generic
+{
+    public static class CollectionExtensions
+    {
+        public static TValue GetValueOrDefault<TKey, TValue>(this IReadOnlyDictionary<TKey, TValue> dictionary, TKey key)
+        {
+            return GetValueOrDefault(dictionary, key, default(TValue));
+        }
+
+        public static TValue GetValueOrDefault<TKey, TValue>(this IReadOnlyDictionary<TKey, TValue> dictionary, TKey key, TValue defaultValue)
+        {
+            if (dictionary == null) throw new ArgumentNullException(nameof(dictionary));
+            return dictionary.TryGetValue(key, out TValue value) ? value : defaultValue;
+        }
+
+        public static bool TryAdd<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key, TValue value)
+        {
+            if (dictionary == null) throw new ArgumentNullException(nameof(dictionary));
+            if (dictionary.ContainsKey(key)) return false;
+            dictionary.Add(key, value);
+            return true;
+        }
+
+        public static bool Remove<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key, out TValue value)
+        {
+            if (dictionary == null) throw new ArgumentNullException(nameof(dictionary));
+            if (dictionary.TryGetValue(key, out value))
+            {
+                dictionary.Remove(key);
+                return true;
+            }
+            value = default(TValue);
+            return false;
+        }
+    }
+}
+
+namespace System
+{
+    public static class MathF
+    {
+        public const float PI = 3.14159274f;
+        public const float E = 2.71828175f;
+        public static float Abs(float x) => Math.Abs(x);
+        public static float Min(float x, float y) => Math.Min(x, y);
+        public static float Max(float x, float y) => Math.Max(x, y);
+        public static float Clamp(float value, float min, float max) => value < min ? min : (value > max ? max : value);
+        public static float Floor(float x) => (float)Math.Floor(x);
+        public static float Ceiling(float x) => (float)Math.Ceiling(x);
+        public static float Round(float x) => (float)Math.Round(x);
+        public static float Round(float x, int digits) => (float)Math.Round(x, digits);
+        public static float Round(float x, MidpointRounding mode) => (float)Math.Round(x, mode);
+        public static float Truncate(float x) => (float)Math.Truncate(x);
+        public static float Sqrt(float x) => (float)Math.Sqrt(x);
+        public static float Pow(float x, float y) => (float)Math.Pow(x, y);
+        public static float Sin(float x) => (float)Math.Sin(x);
+        public static float Cos(float x) => (float)Math.Cos(x);
+        public static float Tan(float x) => (float)Math.Tan(x);
+        public static float Asin(float x) => (float)Math.Asin(x);
+        public static float Acos(float x) => (float)Math.Acos(x);
+        public static float Atan(float x) => (float)Math.Atan(x);
+        public static float Atan2(float y, float x) => (float)Math.Atan2(y, x);
+        public static float Exp(float x) => (float)Math.Exp(x);
+        public static float Log(float x) => (float)Math.Log(x);
+        public static float Log(float x, float y) => (float)Math.Log(x, y);
+        public static float Log10(float x) => (float)Math.Log10(x);
+        public static int Sign(float x) => Math.Sign(x);
+    }
+}
+
 namespace System
 {
     public struct HashCode

@@ -2076,7 +2076,7 @@ namespace SilksongMobileAPI
             var pImg = _uGuiModConsolePanelGo.GetComponent<UnityEngine.UI.Image>();
             pImg.color = new Color(0.08f, 0.07f, 0.10f, 0.96f);
 
-            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.43)", new Vector2(-120f, 392f), new Vector2(1100f, 44f), 24, new Color(0.96f, 0.86f, 0.62f, 1f), TextAnchor.MiddleLeft);
+            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.52)", new Vector2(-120f, 392f), new Vector2(1100f, 44f), 24, new Color(0.96f, 0.86f, 0.62f, 1f), TextAnchor.MiddleLeft);
 
             CreateUGuiButton(_uGuiModConsolePanelGo.transform, "CloseBtn", "Close [X]", new Vector2(630f, 392f), new Vector2(150f, 44f), new Color(0.50f, 0.14f, 0.18f, 0.96f), Color.white, 18, () => SetShowModPanel(false));
 
@@ -4081,7 +4081,7 @@ namespace SilksongMobileAPI
             {
                 LogDiagnosticWarn($"[Profile] Startup profile init notice: {exProf.Message}");
             }
-            LogDiagnosticInfo($"IRIS v2.9.8.43 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
+            LogDiagnosticInfo($"IRIS v2.9.8.52 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
             AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting();
             if (CfgEnableRemoteUpdateCheck?.Value ?? true)
             {
@@ -4761,7 +4761,7 @@ namespace SilksongMobileAPI
 
                 _panelRect.x = Mathf.Clamp(_panelRect.x, 16f, Mathf.Max(16f, vWidth - _panelRect.width - 16f));
                 _panelRect.y = Mathf.Clamp(_panelRect.y, 16f, Mathf.Max(16f, vHeight - _panelRect.height - 16f));
-                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.43)", _styleWindow);
+                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.52)", _styleWindow);
             }
             catch (System.Exception __apiEx_46) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("SilksongMobileAPIPlugin", "L2463", __apiEx_46); }
             finally
@@ -6133,14 +6133,14 @@ namespace SilksongMobileAPI
             var topStrip = CreatePanel(rootRect, "TopLetterboxStrip", new Vector2(0f, 504f), new Vector2(1920f, 72f), colStripBg).rectTransform;
             CreatePanel(topStrip, "TopStripBorder", new Vector2(0f, -36f), new Vector2(1920f, 1.5f), colBorder);
 
-            // Left Square Indicator + "IRIS v2.9.8.43"
+            // Left Square Indicator + "IRIS v2.9.8.52"
             CreatePanel(topStrip, "TopSquareDot", new Vector2(-896f, 0f), new Vector2(10f, 10f), colPrimary);
             _topVersionTextComp = CreateLabel(
                 topStrip,
                 "TopVersionLabel",
                 new Vector2(-420f, 0f),
                 new Vector2(920f, 40f),
-                "IRIS v2.9.8.43",
+                "IRIS v2.9.8.52",
                 20,
                 FontStyle.Bold,
                 colPrimary,
@@ -6211,7 +6211,7 @@ namespace SilksongMobileAPI
                 "BottomStepBadgeText",
                 Vector2.zero,
                 new Vector2(176f, 32f),
-                "IRIS v2.9.8.43",
+                "IRIS v2.9.8.52",
                 15,
                 FontStyle.Bold,
                 colDim,
@@ -6306,7 +6306,7 @@ namespace SilksongMobileAPI
                 "DisclaimerFooterLeft",
                 new Vector2(-420f, -328f),
                 new Vector2(680f, 36f),
-                "IRIS v2.9.8.43  //  PC MOD COMPATIBILITY LAYER",
+                "IRIS v2.9.8.52  //  PC MOD COMPATIBILITY LAYER",
                 17,
                 FontStyle.Bold,
                 colMuted,
@@ -6501,7 +6501,7 @@ namespace SilksongMobileAPI
                 _showingDisclaimer = false;
                 _watchdogElapsed = 0f;
             }
-            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.43)...");
+            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.52)...");
             TrySetBackgroundLoadingPriority(ThreadPriority.High);
             yield return null;
 

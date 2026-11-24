@@ -3299,7 +3299,7 @@ namespace SilksongMobileAPI
 
     public static class IrisRemoteUpdater
     {
-        public const string CurrentVersionText = "2.9.8.43";
+        public const string CurrentVersionText = "2.9.8.52";
         private const string DefaultManifestUrl = "https://raw.githubusercontent.com/loreMx0/SilksongMobileAPI/main/00_IRIS/plugin.json";
 
         public static bool IsChecking { get; private set; }

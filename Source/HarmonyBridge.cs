@@ -610,6 +610,195 @@ namespace SilksongMobileAPI
             return value;
         }
 
+        public static bool StringContainsChar(string s, char value)
+        {
+            return s != null && s.IndexOf(value) >= 0;
+        }
+
+        public static bool StringContainsComparison(string s, string value, StringComparison comparisonType)
+        {
+            if (s == null) return false;
+            if (value == null) throw new ArgumentNullException(nameof(value));
+            return s.IndexOf(value, comparisonType) >= 0;
+        }
+
+        public static bool StringContainsCharComparison(string s, char value, StringComparison comparisonType)
+        {
+            if (s == null) return false;
+            if (comparisonType == StringComparison.Ordinal) return s.IndexOf(value) >= 0;
+            return s.IndexOf(value.ToString(), comparisonType) >= 0;
+        }
+
+        public static bool StringStartsWithChar(string s, char value)
+        {
+            return !string.IsNullOrEmpty(s) && s[0] == value;
+        }
+
+        public static bool StringEndsWithChar(string s, char value)
+        {
+            return !string.IsNullOrEmpty(s) && s[s.Length - 1] == value;
+        }
+
+        public static string[] StringSplitCharOptions(string s, char separator, StringSplitOptions options)
+        {
+            if (s == null) return Array.Empty<string>();
+            return s.Split(new char[] { separator }, options);
+        }
+
+        public static string[] StringSplitStringOptions(string s, string separator, StringSplitOptions options)
+        {
+            if (s == null) return Array.Empty<string>();
+            return s.Split(new string[] { separator }, options);
+        }
+
+        public static string StringTrimStart0(string s)
+        {
+            return s == null ? null : s.TrimStart((char[])null);
+        }
+
+        public static string StringTrimEnd0(string s)
+        {
+            return s == null ? null : s.TrimEnd((char[])null);
+        }
+
+        public static string StringTrimChar(string s, char trimChar)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            int start = 0, end = s.Length - 1;
+            while (start <= end && s[start] == trimChar) start++;
+            while (end >= start && s[end] == trimChar) end--;
+            if (start == 0 && end == s.Length - 1) return s;
+            return start > end ? string.Empty : s.Substring(start, end - start + 1);
+        }
+
+        public static string StringTrimStartChar(string s, char trimChar)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            int start = 0;
+            while (start < s.Length && s[start] == trimChar) start++;
+            return start == 0 ? s : (start >= s.Length ? string.Empty : s.Substring(start));
+        }
+
+        public static string StringTrimEndChar(string s, char trimChar)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            int end = s.Length - 1;
+            while (end >= 0 && s[end] == trimChar) end--;
+            return end == s.Length - 1 ? s : (end < 0 ? string.Empty : s.Substring(0, end + 1));
+        }
+
+        public static string StringReplaceComparison(string s, string oldValue, string newValue, StringComparison comparisonType)
+        {
+            if (s == null) return null;
+            if (oldValue == null) throw new ArgumentNullException(nameof(oldValue));
+            if (oldValue.Length == 0) throw new ArgumentException("String cannot be of zero length.", nameof(oldValue));
+            if (comparisonType == StringComparison.Ordinal) return s.Replace(oldValue, newValue ?? string.Empty);
+            int idx = s.IndexOf(oldValue, 0, comparisonType);
+            if (idx < 0) return s;
+            var sb = new System.Text.StringBuilder(s.Length);
+            int pos = 0;
+            string rep = newValue ?? string.Empty;
+            while (idx >= 0)
+            {
+                sb.Append(s, pos, idx - pos);
+                sb.Append(rep);
+                pos = idx + oldValue.Length;
+                if (pos >= s.Length) break;
+                idx = s.IndexOf(oldValue, pos, comparisonType);
+            }
+            if (pos < s.Length) sb.Append(s, pos, s.Length - pos);
+            return sb.ToString();
+        }
+
+        public static string StringJoinCharArray(char separator, string[] value)
+        {
+            return string.Join(separator.ToString(), value);
+        }
+
+        public static string StringJoinCharObjects(char separator, object[] values)
+        {
+            return string.Join(separator.ToString(), values);
+        }
+
+        public static string StringJoinCharEnumerable(char separator, IEnumerable<string> values)
+        {
+            return string.Join(separator.ToString(), values);
+        }
+
+        public static string StringJoinCharGeneric<T>(char separator, IEnumerable<T> values)
+        {
+            if (values == null) throw new ArgumentNullException(nameof(values));
+            using (var en = values.GetEnumerator())
+            {
+                if (!en.MoveNext()) return string.Empty;
+                var sb = new System.Text.StringBuilder();
+                var first = en.Current;
+                if (first != null) sb.Append(first.ToString());
+                while (en.MoveNext())
+                {
+                    sb.Append(separator);
+                    var cur = en.Current;
+                    if (cur != null) sb.Append(cur.ToString());
+                }
+                return sb.ToString();
+            }
+        }
+
+        public static string StringJoinCharSlice(char separator, string[] value, int startIndex, int count)
+        {
+            return string.Join(separator.ToString(), value, startIndex, count);
+        }
+
+        public static void ConditionalWeakTableAddOrUpdate<TKey, TValue>(System.Runtime.CompilerServices.ConditionalWeakTable<TKey, TValue> table, TKey key, TValue value)
+            where TKey : class
+            where TValue : class
+        {
+            if (table == null) throw new ArgumentNullException(nameof(table));
+            lock (table)
+            {
+                table.Remove(key);
+                table.Add(key, value);
+            }
+        }
+
+        public static TEnum EnumParseGeneric1<TEnum>(string value) where TEnum : struct
+        {
+            return (TEnum)Enum.Parse(typeof(TEnum), value);
+        }
+
+        public static TEnum EnumParseGeneric2<TEnum>(string value, bool ignoreCase) where TEnum : struct
+        {
+            return (TEnum)Enum.Parse(typeof(TEnum), value, ignoreCase);
+        }
+
+        public static bool EnumTryParseNonGeneric3(Type enumType, string value, out object result)
+        {
+            return EnumTryParseNonGeneric4(enumType, value, false, out result);
+        }
+
+        public static bool EnumTryParseNonGeneric4(Type enumType, string value, bool ignoreCase, out object result)
+        {
+            result = null;
+            if (enumType == null) throw new ArgumentNullException(nameof(enumType));
+            if (!enumType.IsEnum) throw new ArgumentException("Type provided must be an Enum.", nameof(enumType));
+            if (string.IsNullOrEmpty(value)) return false;
+            try
+            {
+                result = Enum.Parse(enumType, value, ignoreCase);
+                return true;
+            }
+            catch
+            {
+                result = null;
+                return false;
+            }
+        }
+
+        public static Mesh Collider2DCreateMesh3(Collider2D col, bool useBodyPosition, bool useBodyRotation, bool useDelaunay)
+        {
+            return col != null ? col.CreateMesh(useBodyPosition, useBodyRotation) : null;
+        }
+
         public static object InControl_GetKeyboardProviderSafe() => null;
         public static object InControl_GetMouseProviderSafe() => null;
 

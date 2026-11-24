@@ -1,5 +1,5 @@
 {
-  "Name": "IRIS v2.9.8.43",
+  "Name": "IRIS v2.9.8.52",
   "Description": "IRIS — Runtime Cecil IL Rewriter + HybridCLR Dynamic Hook Adapter + PlayMaker FSM & Prepatcher Bridge for Silksong Mobile.",
   "EntryDLL": "IRIS.dll",
   "DepDLLs": [],

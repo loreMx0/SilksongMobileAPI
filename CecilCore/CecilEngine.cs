@@ -232,15 +232,14 @@ namespace SilksongMobileAPI.CecilCore
                     {
                         try
                         {
-                            foreach (var oldName in new[] { ".cecil_cache_v2428", ".cecil_cache_v2429", ".cecil_cache_v2430", ".cecil_cache_v2432", ".cecil_cache_v250", ".cecil_cache_v251", ".cecil_cache_v251a", ".cecil_cache_v252", ".cecil_cache_v255", ".cecil_cache_v257", ".cecil_cache_v258", ".cecil_cache_v259", ".cecil_cache_v260", ".cecil_cache_v261", ".cecil_cache_v262", ".cecil_cache_v263", ".cecil_cache_v264", ".cecil_cache_v265", ".cecil_cache_v266", ".cecil_cache_v267", ".cecil_cache_v268", ".cecil_cache_v269", ".cecil_cache_v275", ".cecil_cache_v280", ".cecil_cache_v281", ".cecil_cache_v282", ".cecil_cache_v283", ".cecil_cache_v284", ".cecil_cache_v285", ".cecil_cache_v286", ".cecil_cache_v287", ".cecil_cache_v289", ".cecil_cache_v290", ".cecil_cache_v292", ".cecil_cache_v293", ".cecil_cache_v294", ".cecil_cache_v295", ".cecil_cache_v296", ".cecil_cache_v2961", ".cecil_cache_v2962", ".cecil_cache_v2963", ".cecil_cache_v2964", ".cecil_cache_v2965", ".cecil_cache_v2966", ".cecil_cache_v2967", ".cecil_cache_v2968", ".cecil_cache_v29614", ".cecil_cache_v29615", ".cecil_cache_v29618", ".cecil_cache_v29620", ".cecil_cache_v29625", ".cecil_cache_v29626", ".cecil_cache_v2983", ".cecil_cache_v2984", ".cecil_cache_v2986" })
+                            foreach (var oldP in Directory.GetDirectories(parentDir, ".cecil_cache_*"))
                             {
-                                if (oldName == ".cecil_cache_v29839") continue;
-                                string oldP = Path.Combine(parentDir, oldName);
-                                if (Directory.Exists(oldP)) Directory.Delete(oldP, true);
+                                if (string.Equals(Path.GetFileName(oldP), ".cecil_cache_v29852", StringComparison.Ordinal)) continue;
+                                try { Directory.Delete(oldP, true); } catch { }
                             }
                         }
                         catch { }
-                        cacheDir = Path.Combine(parentDir, ".cecil_cache_v29839");
+                        cacheDir = Path.Combine(parentDir, ".cecil_cache_v29852");
                         ulong fnv = ComputeFnv1a64(rawBytes);
                         string modeTag = preAlreadyLoaded ? "rt" : "std";
                         cachePrefix = Path.Combine(cacheDir, $"{shortFileName}_{rawBytes.Length}_{fnv:X16}_{modeTag}");
@@ -2501,6 +2500,8 @@ namespace SilksongMobileAPI.CecilCore
                 case "DanielSteginkUtils.Helpers.GetTools":
                 case "DanielSteginkUtils.Utilities.Components":
                 case "System.HashCode":
+                case "System.Collections.Generic.CollectionExtensions":
+                case "System.MathF":
                 case "HutongGames.PlayMaker.Actions.SuperJumpRaycast":
                 case "InControl.BindingSourceRejectionType":
                 case "InControl.InputDeviceClass":
@@ -3716,6 +3717,143 @@ namespace SilksongMobileAPI.CecilCore
                                 var m = _harmonyBridgeType.GetMethod(clampHelper, BindingFlags.Static | BindingFlags.Public);
                                 if (m != null) { ins.OpCode = OpCodes.Call; ins.Operand = mod.ImportReference(m); count++; continue; }
                             }
+                        }
+                        if (declFull == "System.String" && _harmonyBridgeType != null && (ins.OpCode == OpCodes.Call || ins.OpCode == OpCodes.Callvirt))
+                        {
+                            string strHelper = null;
+                            if (mName == "Contains" && mr.Parameters.Count == 1 && mr.Parameters[0].ParameterType.FullName == "System.Char")
+                                strHelper = "StringContainsChar";
+                            else if (mName == "Contains" && mr.Parameters.Count == 2 && mr.Parameters[0].ParameterType.FullName == "System.String" && mr.Parameters[1].ParameterType.FullName == "System.StringComparison")
+                                strHelper = "StringContainsComparison";
+                            else if (mName == "Contains" && mr.Parameters.Count == 2 && mr.Parameters[0].ParameterType.FullName == "System.Char" && mr.Parameters[1].ParameterType.FullName == "System.StringComparison")
+                                strHelper = "StringContainsCharComparison";
+                            else if (mName == "StartsWith" && mr.Parameters.Count == 1 && mr.Parameters[0].ParameterType.FullName == "System.Char")
+                                strHelper = "StringStartsWithChar";
+                            else if (mName == "EndsWith" && mr.Parameters.Count == 1 && mr.Parameters[0].ParameterType.FullName == "System.Char")
+                                strHelper = "StringEndsWithChar";
+                            else if (mName == "Split" && mr.Parameters.Count == 2 && mr.Parameters[0].ParameterType.FullName == "System.Char" && mr.Parameters[1].ParameterType.FullName == "System.StringSplitOptions")
+                                strHelper = "StringSplitCharOptions";
+                            else if (mName == "Split" && mr.Parameters.Count == 2 && mr.Parameters[0].ParameterType.FullName == "System.String" && mr.Parameters[1].ParameterType.FullName == "System.StringSplitOptions")
+                                strHelper = "StringSplitStringOptions";
+                            else if (mName == "TrimStart" && mr.Parameters.Count == 0)
+                                strHelper = "StringTrimStart0";
+                            else if (mName == "TrimEnd" && mr.Parameters.Count == 0)
+                                strHelper = "StringTrimEnd0";
+                            else if (mName == "Trim" && mr.Parameters.Count == 1 && mr.Parameters[0].ParameterType.FullName == "System.Char")
+                                strHelper = "StringTrimChar";
+                            else if (mName == "TrimStart" && mr.Parameters.Count == 1 && mr.Parameters[0].ParameterType.FullName == "System.Char")
+                                strHelper = "StringTrimStartChar";
+                            else if (mName == "TrimEnd" && mr.Parameters.Count == 1 && mr.Parameters[0].ParameterType.FullName == "System.Char")
+                                strHelper = "StringTrimEndChar";
+                            else if (mName == "Replace" && mr.Parameters.Count == 3 &&
+                                     mr.Parameters[0].ParameterType.FullName == "System.String" &&
+                                     mr.Parameters[1].ParameterType.FullName == "System.String" &&
+                                     mr.Parameters[2].ParameterType.FullName == "System.StringComparison")
+                                strHelper = "StringReplaceComparison";
+                            else if (mName == "Join" && mr.Parameters.Count == 2 && mr.Parameters[0].ParameterType.FullName == "System.Char")
+                            {
+                                string p1 = mr.Parameters[1].ParameterType.FullName;
+                                if (p1 == "System.String[]") strHelper = "StringJoinCharArray";
+                                else if (p1 == "System.Object[]") strHelper = "StringJoinCharObjects";
+                                else if (p1 == "System.Collections.Generic.IEnumerable`1<System.String>") strHelper = "StringJoinCharEnumerable";
+                                else if (mr is GenericInstanceMethod gimJoin && gimJoin.GenericArguments.Count == 1)
+                                {
+                                    var openJoin = _harmonyBridgeType.GetMethod("StringJoinCharGeneric", BindingFlags.Static | BindingFlags.Public);
+                                    if (openJoin != null)
+                                    {
+                                        var importedOpen = mod.ImportReference(openJoin);
+                                        var closedJoin = new GenericInstanceMethod(importedOpen);
+                                        closedJoin.GenericArguments.Add(gimJoin.GenericArguments[0]);
+                                        ins.OpCode = OpCodes.Call;
+                                        ins.Operand = closedJoin;
+                                        count++;
+                                        continue;
+                                    }
+                                }
+                            }
+                            else if (mName == "Join" && mr.Parameters.Count == 4 &&
+                                     mr.Parameters[0].ParameterType.FullName == "System.Char" &&
+                                     mr.Parameters[1].ParameterType.FullName == "System.String[]" &&
+                                     mr.Parameters[2].ParameterType.FullName == "System.Int32" &&
+                                     mr.Parameters[3].ParameterType.FullName == "System.Int32")
+                                strHelper = "StringJoinCharSlice";
+                            if (strHelper != null)
+                            {
+                                var m = _harmonyBridgeType.GetMethod(strHelper, BindingFlags.Static | BindingFlags.Public);
+                                if (m != null) { ins.OpCode = OpCodes.Call; ins.Operand = mod.ImportReference(m); count++; continue; }
+                            }
+                        }
+                        if (declFull.StartsWith("System.Runtime.CompilerServices.ConditionalWeakTable`2", StringComparison.Ordinal) &&
+                            mName == "AddOrUpdate" && mr.Parameters.Count == 2 &&
+                            mr.DeclaringType is GenericInstanceType cwtGit && cwtGit.GenericArguments.Count == 2 &&
+                            _harmonyBridgeType != null && (ins.OpCode == OpCodes.Call || ins.OpCode == OpCodes.Callvirt))
+                        {
+                            var openCwt = _harmonyBridgeType.GetMethod("ConditionalWeakTableAddOrUpdate", BindingFlags.Static | BindingFlags.Public);
+                            if (openCwt != null)
+                            {
+                                var importedOpen = mod.ImportReference(openCwt);
+                                var closedCwt = new GenericInstanceMethod(importedOpen);
+                                closedCwt.GenericArguments.Add(cwtGit.GenericArguments[0]);
+                                closedCwt.GenericArguments.Add(cwtGit.GenericArguments[1]);
+                                ins.OpCode = OpCodes.Call;
+                                ins.Operand = closedCwt;
+                                count++;
+                                continue;
+                            }
+                        }
+                        if (declFull == "System.Enum" && mName == "Parse" &&
+                            mr is GenericInstanceMethod gimEnumParse && gimEnumParse.GenericArguments.Count == 1 &&
+                            _harmonyBridgeType != null && (ins.OpCode == OpCodes.Call || ins.OpCode == OpCodes.Callvirt))
+                        {
+                            string enumHelper = null;
+                            if (mr.Parameters.Count == 1 && mr.Parameters[0].ParameterType.FullName == "System.String")
+                                enumHelper = "EnumParseGeneric1";
+                            else if (mr.Parameters.Count == 2 && mr.Parameters[0].ParameterType.FullName == "System.String" && mr.Parameters[1].ParameterType.FullName == "System.Boolean")
+                                enumHelper = "EnumParseGeneric2";
+                            if (enumHelper != null)
+                            {
+                                var openEnum = _harmonyBridgeType.GetMethod(enumHelper, BindingFlags.Static | BindingFlags.Public);
+                                if (openEnum != null)
+                                {
+                                    var importedOpen = mod.ImportReference(openEnum);
+                                    var closedEnum = new GenericInstanceMethod(importedOpen);
+                                    closedEnum.GenericArguments.Add(gimEnumParse.GenericArguments[0]);
+                                    ins.OpCode = OpCodes.Call;
+                                    ins.Operand = closedEnum;
+                                    count++;
+                                    continue;
+                                }
+                            }
+                        }
+                        if (declFull == "System.Enum" && mName == "TryParse" && !(mr is GenericInstanceMethod) &&
+                            _harmonyBridgeType != null && (ins.OpCode == OpCodes.Call || ins.OpCode == OpCodes.Callvirt))
+                        {
+                            string enumTryHelper = null;
+                            if (mr.Parameters.Count == 3 &&
+                                mr.Parameters[0].ParameterType.FullName == "System.Type" &&
+                                mr.Parameters[1].ParameterType.FullName == "System.String" &&
+                                mr.Parameters[2].ParameterType.FullName == "System.Object&")
+                                enumTryHelper = "EnumTryParseNonGeneric3";
+                            else if (mr.Parameters.Count == 4 &&
+                                     mr.Parameters[0].ParameterType.FullName == "System.Type" &&
+                                     mr.Parameters[1].ParameterType.FullName == "System.String" &&
+                                     mr.Parameters[2].ParameterType.FullName == "System.Boolean" &&
+                                     mr.Parameters[3].ParameterType.FullName == "System.Object&")
+                                enumTryHelper = "EnumTryParseNonGeneric4";
+                            if (enumTryHelper != null)
+                            {
+                                var m = _harmonyBridgeType.GetMethod(enumTryHelper, BindingFlags.Static | BindingFlags.Public);
+                                if (m != null) { ins.OpCode = OpCodes.Call; ins.Operand = mod.ImportReference(m); count++; continue; }
+                            }
+                        }
+                        if (declFull == "UnityEngine.Collider2D" && mName == "CreateMesh" && mr.Parameters.Count == 3 &&
+                            mr.Parameters[0].ParameterType.FullName == "System.Boolean" &&
+                            mr.Parameters[1].ParameterType.FullName == "System.Boolean" &&
+                            mr.Parameters[2].ParameterType.FullName == "System.Boolean" &&
+                            _harmonyBridgeType != null && (ins.OpCode == OpCodes.Call || ins.OpCode == OpCodes.Callvirt))
+                        {
+                            var m = _harmonyBridgeType.GetMethod("Collider2DCreateMesh3", BindingFlags.Static | BindingFlags.Public);
+                            if (m != null) { ins.OpCode = OpCodes.Call; ins.Operand = mod.ImportReference(m); count++; continue; }
                         }
                         if (declFull == "UnityEngine.ColorUtility" && mr.Parameters.Count == 1)
                         {
