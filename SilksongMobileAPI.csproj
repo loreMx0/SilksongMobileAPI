@@ -11,7 +11,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <OutputPath>/home/btw/Projects/SilksongMobileAPI/.tmp_build/Main</OutputPath>
+    <OutputPath>/home/lorem/Projects/SilksongMobileAPI/.tmp_build/Main</OutputPath>
     <DebugType>none</DebugType>
     <NoWarn>CS0436;CS0618;CS0169;CS0649;CS0414;CS0108;CS0067;CS0162;MSB3277</NoWarn>
   </PropertyGroup>
@@ -28,8 +28,8 @@
     <Compile Include="Source/EmbeddedPayloads.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="/home/btw/Projects/lib/*.dll"
-               Exclude="/home/btw/Projects/lib/mscorlib.dll;/home/btw/Projects/lib/netstandard.dll;/home/btw/Projects/lib/System*.dll;/home/btw/Projects/lib/Mono.*.dll;/home/btw/Projects/lib/0Harmony.dll;/home/btw/Projects/lib/Silksong.FsmUtil.dll;/home/btw/Projects/lib/AssetHelper.dll;/home/btw/Projects/lib/MMHOOK_*.dll;/home/btw/Projects/lib/MonoMod.*.dll">
+    <Reference Include="/home/lorem/Projects/lib/*.dll"
+               Exclude="/home/lorem/Projects/lib/mscorlib.dll;/home/lorem/Projects/lib/netstandard.dll;/home/lorem/Projects/lib/System*.dll;/home/lorem/Projects/lib/Mono.*.dll;/home/lorem/Projects/lib/0Harmony.dll;/home/lorem/Projects/lib/Silksong.FsmUtil.dll;/home/lorem/Projects/lib/AssetHelper.dll;/home/lorem/Projects/lib/MMHOOK_*.dll;/home/lorem/Projects/lib/MonoMod.*.dll">
       <Private>false</Private>
     </Reference>
   </ItemGroup>

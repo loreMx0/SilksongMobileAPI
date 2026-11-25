@@ -9,7 +9,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <OutputPath>/home/btw/Projects/SilksongMobileAPI/.tmp_build/CecilCore</OutputPath>
+    <OutputPath>/home/lorem/Projects/SilksongMobileAPI/.tmp_build/CecilCore</OutputPath>
     <DebugType>none</DebugType>
     <NoWarn>CS0436;CS0618;CS0169;CS0649;CS0414;CS0108;CS0067;CS0162;MSB3277</NoWarn>
   </PropertyGroup>
@@ -18,7 +18,7 @@
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Mono.Cecil">
-      <HintPath>/home/btw/Projects/lib/Mono.Cecil.dll</HintPath>
+      <HintPath>/home/lorem/Projects/lib/Mono.Cecil.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

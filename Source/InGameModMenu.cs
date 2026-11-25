@@ -848,10 +848,13 @@ namespace SilksongMobileAPI
 
             if (n.IndexOf("AssetHelper", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 n.IndexOf("FsmUtil", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                string.Equals(n, "ModMenu", StringComparison.OrdinalIgnoreCase) ||
+                n.EndsWith("-ModMenu", StringComparison.OrdinalIgnoreCase) ||
+                n.IndexOf("Silksong.ModMenu", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 n.IndexOf("Stitchwork", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 n.IndexOf("Patchwork", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                // Native mobile AssetHelper & Silksong.FsmUtil are pre-installed and bridged by SilksongMobileAPI;
+                // Native mobile AssetHelper, Silksong.FsmUtil, and shimmed Silksong.ModMenu are provided by SilksongMobileAPI;
                 // never overwrite them with PC binaries.
                 return true;
             }
@@ -3277,19 +3280,23 @@ namespace SilksongMobileAPI
             _blinkB = blinkB;
         }
 
+        private bool _wasBlinking;
+
         private void Update()
         {
             if (_img == null) return;
             bool shouldBlink = IrisRemoteUpdater.IsUpdateAvailable && !IrisRemoteUpdater.UpdateAppliedPendingRestart;
             if (shouldBlink)
             {
+                _wasBlinking = true;
                 float t = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 5.5f);
                 _img.color = Color.Lerp(_blinkB, _blinkA, t);
                 if (_txt != null && !string.IsNullOrEmpty(_alertText) && _txt.text != _alertText)
                     _txt.text = _alertText;
             }
-            else
+            else if (_wasBlinking)
             {
+                _wasBlinking = false;
                 if (_img.color != _normalCol) _img.color = _normalCol;
                 if (_txt != null && !string.IsNullOrEmpty(_normalText) && _txt.text != _normalText)
                     _txt.text = _normalText;
@@ -3299,7 +3306,7 @@ namespace SilksongMobileAPI
 
     public static class IrisRemoteUpdater
     {
-        public const string CurrentVersionText = "2.9.8.52";
+        public const string CurrentVersionText = "2.9.8.56";
         private const string DefaultManifestUrl = "https://raw.githubusercontent.com/loreMx0/SilksongMobileAPI/main/00_IRIS/plugin.json";
 
         public static bool IsChecking { get; private set; }

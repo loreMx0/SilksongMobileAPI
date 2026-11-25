@@ -2736,6 +2736,7 @@ namespace Silksong.ModMenu.Models
         public ListChoiceModel(List<T> items) : base(items != null && items.Count > 0 ? items[0] : default) { Values = items ?? new List<T>(); }
         public ListChoiceModel(IList<T> items, T defaultVal = default) : base(defaultVal) { Values = items != null ? new List<T>(items) : new List<T>(); }
         public void UpdateValues(List<T> items, int index = 0) { Values = items ?? new List<T>(); Index = index; }
+        public void UpdateValues(IList<T> items, int index = 0) { Values = items != null ? new List<T>(items) : new List<T>(); Index = index; }
         public static string DefaultDisplayString(int idx, T val) => val != null ? val.ToString() : "";
     }
 
@@ -2793,10 +2794,48 @@ namespace Silksong.ModMenu.Models
     public class ParserTextModel<T> : AbstractValueModel<T>
     {
         public delegate bool Parse(string text, out T val);
-        public delegate string Unparse(T val);
-        public Func<T, bool> ConstraintFn;
+        public delegate bool Unparse(T value, out string text);
+        private readonly Parse _parse;
+        private readonly Unparse _unparse;
+        private string _lastText = "";
+        private bool _isTextValid = true;
+        public Func<T, bool> ConstraintFn = (T _) => true;
         public ParserTextModel() { }
-        public ParserTextModel(Parse parseFn, Unparse unparseFn, T initial = default) : base(initial) { }
+        public ParserTextModel(Parse parseFn, Unparse unparseFn, T initial = default) : base(initial)
+        {
+            _parse = parseFn;
+            _unparse = unparseFn;
+            if (_unparse != null && _unparse(initial, out string text))
+                _lastText = text ?? "";
+            else
+                _lastText = initial != null ? initial.ToString() : "";
+        }
+        public override bool IsTextValid => _isTextValid;
+        public override string GetTextValue() => _lastText ?? base.GetTextValue();
+        public override void SetValue(T val)
+        {
+            if (ConstraintFn != null && !ConstraintFn(val)) return;
+            if (_unparse != null && _unparse(val, out string text))
+                _lastText = text ?? "";
+            else
+                _lastText = val != null ? val.ToString() : "";
+            _isTextValid = true;
+            base.SetValue(val);
+        }
+        public override void SetTextValue(string text)
+        {
+            _lastText = text ?? "";
+            if (_parse != null && _parse(_lastText, out T parsed) && (ConstraintFn == null || ConstraintFn(parsed)))
+            {
+                _isTextValid = true;
+                base.SetValue(parsed);
+            }
+            else
+            {
+                _isTextValid = false;
+            }
+            base.SetTextValue(_lastText);
+        }
     }
 
     public static class TextModels
@@ -7365,7 +7404,7 @@ namespace BepInEx.Bootstrap
 {
     public static class TypeLoader
     {
-        public static object ReaderParameters { get; set; }
+        public static object ReaderParameters;
     }
 }
 

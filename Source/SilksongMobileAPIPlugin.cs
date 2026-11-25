@@ -148,13 +148,18 @@ namespace SilksongMobileAPI
             if (_themeInitialized && _texWinBg != null && _styleWindow != null) return;
             _themeInitialized = true;
 
-            _texWinBg = MakeBorderedTex(16, 16, new Color(0.08f, 0.06f, 0.09f, 0.96f), new Color(0.76f, 0.60f, 0.34f, 0.95f), 2);
-            _texCardBg = MakeBorderedTex(12, 12, new Color(0.14f, 0.10f, 0.14f, 0.92f), new Color(0.45f, 0.32f, 0.24f, 0.80f), 1);
-            _texBtnNormal = MakeBorderedTex(12, 12, new Color(0.24f, 0.11f, 0.15f, 0.95f), new Color(0.68f, 0.50f, 0.30f, 0.90f), 1);
-            _texBtnHover = MakeBorderedTex(12, 12, new Color(0.38f, 0.15f, 0.20f, 0.98f), new Color(0.92f, 0.76f, 0.45f, 1.00f), 1);
-            _texBtnActive = MakeBorderedTex(12, 12, new Color(0.52f, 0.16f, 0.22f, 0.98f), new Color(1.00f, 0.86f, 0.55f, 1.00f), 2);
-            _texFloatBtn = MakeBorderedTex(16, 16, new Color(0.30f, 0.09f, 0.13f, 0.94f), new Color(0.88f, 0.70f, 0.38f, 0.98f), 2);
-            _texFloatBtnOpen = MakeBorderedTex(16, 16, new Color(0.16f, 0.32f, 0.20f, 0.96f), new Color(0.55f, 0.92f, 0.65f, 0.98f), 2);
+            // Pond UI Palette (Warm Alabaster, Soft Stone, Deep Ink, Pond Coral & Sage — zero extra allocations)
+            _texWinBg = MakeBorderedTex(16, 16, new Color(0.98f, 0.97f, 0.95f, 0.97f), new Color(0.86f, 0.82f, 0.76f, 1.00f), 2);
+            _texCardBg = MakeBorderedTex(12, 12, new Color(0.95f, 0.93f, 0.89f, 0.96f), new Color(0.87f, 0.84f, 0.78f, 0.95f), 1);
+            _texBtnNormal = MakeBorderedTex(12, 12, new Color(0.92f, 0.89f, 0.85f, 0.98f), new Color(0.83f, 0.79f, 0.73f, 1.00f), 1);
+            _texBtnHover = MakeBorderedTex(12, 12, new Color(0.88f, 0.84f, 0.78f, 1.00f), new Color(0.88f, 0.43f, 0.33f, 0.95f), 1);
+            _texBtnActive = MakeBorderedTex(12, 12, new Color(0.88f, 0.43f, 0.33f, 1.00f), new Color(0.76f, 0.33f, 0.24f, 1.00f), 2);
+            _texFloatBtn = MakeBorderedTex(16, 16, new Color(0.96f, 0.94f, 0.91f, 0.96f), new Color(0.88f, 0.43f, 0.33f, 0.95f), 2);
+            _texFloatBtnOpen = MakeBorderedTex(16, 16, new Color(0.32f, 0.55f, 0.46f, 0.98f), new Color(0.24f, 0.44f, 0.36f, 1.00f), 2);
+
+            Color pondInk = new Color(0.11f, 0.10f, 0.09f, 1f);
+            Color pondMuted = new Color(0.36f, 0.33f, 0.30f, 1f);
+            Color pondCoralText = new Color(0.79f, 0.34f, 0.24f, 1f);
 
             _styleWindow = new GUIStyle(GUI.skin.window)
             {
@@ -166,8 +171,8 @@ namespace SilksongMobileAPI
             };
             _styleWindow.normal.background = _texWinBg;
             _styleWindow.onNormal.background = _texWinBg;
-            _styleWindow.normal.textColor = new Color(0.96f, 0.86f, 0.62f, 1f);
-            _styleWindow.onNormal.textColor = new Color(0.96f, 0.86f, 0.62f, 1f);
+            _styleWindow.normal.textColor = pondInk;
+            _styleWindow.onNormal.textColor = pondInk;
 
             _styleCard = new GUIStyle(GUI.skin.box)
             {
@@ -176,7 +181,7 @@ namespace SilksongMobileAPI
                 margin = new RectOffset(4, 4, 4, 4)
             };
             _styleCard.normal.background = _texCardBg;
-            _styleCard.normal.textColor = new Color(0.94f, 0.92f, 0.90f, 1f);
+            _styleCard.normal.textColor = pondInk;
 
             _styleFloatBtn = new GUIStyle(GUI.skin.button)
             {
@@ -189,13 +194,13 @@ namespace SilksongMobileAPI
             _styleFloatBtn.normal.background = _texFloatBtn;
             _styleFloatBtn.hover.background = _texBtnHover;
             _styleFloatBtn.active.background = _texBtnActive;
-            _styleFloatBtn.normal.textColor = new Color(0.98f, 0.92f, 0.80f, 1f);
-            _styleFloatBtn.hover.textColor = Color.white;
+            _styleFloatBtn.normal.textColor = pondInk;
+            _styleFloatBtn.hover.textColor = pondInk;
             _styleFloatBtn.active.textColor = Color.white;
 
             _styleFloatBtnOpen = new GUIStyle(_styleFloatBtn);
             _styleFloatBtnOpen.normal.background = _texFloatBtnOpen;
-            _styleFloatBtnOpen.normal.textColor = new Color(0.65f, 1.0f, 0.75f, 1f);
+            _styleFloatBtnOpen.normal.textColor = Color.white;
 
             _styleActionBtn = new GUIStyle(GUI.skin.button)
             {
@@ -209,9 +214,9 @@ namespace SilksongMobileAPI
             _styleActionBtn.normal.background = _texBtnNormal;
             _styleActionBtn.hover.background = _texBtnHover;
             _styleActionBtn.active.background = _texBtnActive;
-            _styleActionBtn.normal.textColor = new Color(0.95f, 0.92f, 0.88f, 1f);
-            _styleActionBtn.hover.textColor = Color.white;
-            _styleActionBtn.active.textColor = new Color(1f, 0.92f, 0.65f, 1f);
+            _styleActionBtn.normal.textColor = pondInk;
+            _styleActionBtn.hover.textColor = pondInk;
+            _styleActionBtn.active.textColor = Color.white;
 
             _styleTabBtn = new GUIStyle(_styleActionBtn)
             {
@@ -222,11 +227,11 @@ namespace SilksongMobileAPI
 
             _styleTabBtnActive = new GUIStyle(_styleTabBtn);
             _styleTabBtnActive.normal.background = _texBtnActive;
-            _styleTabBtnActive.normal.textColor = new Color(1f, 0.90f, 0.55f, 1f);
+            _styleTabBtnActive.normal.textColor = Color.white;
 
             _styleDangerBtn = new GUIStyle(_styleActionBtn);
             _styleDangerBtn.normal.background = _texBtnActive;
-            _styleDangerBtn.normal.textColor = new Color(1f, 0.75f, 0.75f, 1f);
+            _styleDangerBtn.normal.textColor = Color.white;
 
             _styleHeaderLabel = new GUIStyle(GUI.skin.label)
             {
@@ -234,7 +239,7 @@ namespace SilksongMobileAPI
                 fontStyle = FontStyle.Bold,
                 richText = true
             };
-            _styleHeaderLabel.normal.textColor = new Color(0.96f, 0.86f, 0.64f, 1f);
+            _styleHeaderLabel.normal.textColor = pondCoralText;
 
             _styleBodyLabel = new GUIStyle(GUI.skin.label)
             {
@@ -242,7 +247,7 @@ namespace SilksongMobileAPI
                 richText = true,
                 wordWrap = true
             };
-            _styleBodyLabel.normal.textColor = new Color(0.92f, 0.90f, 0.88f, 1f);
+            _styleBodyLabel.normal.textColor = pondMuted;
         }
 
         private bool _autoCloseMenuOnKeyTap = true;
@@ -788,6 +793,126 @@ namespace SilksongMobileAPI
         private int _uGuiPageIndex;
         private readonly HashSet<string> _expandedConfigMods = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // =====================================================================
+        // Lightweight Pond UI Theme (3 tiny cached 9-sliced sprites, ~9 KB VRAM, zero per-frame cost)
+        // =====================================================================
+        internal static class PondUiTheme
+        {
+            public static readonly Color Paper       = new Color32(250, 248, 244, 255); // #FAF8F4
+            public static readonly Color Card        = new Color32(243, 239, 232, 250); // #F3EFE8
+            public static readonly Color CardBorder  = new Color32(226, 219, 207, 255); // #E2DBCF
+            public static readonly Color Pill        = new Color32(235, 229, 218, 250); // #EBE5DA
+            public static readonly Color PillHover   = new Color32(222, 214, 200, 255); // #DED6C8
+            public static readonly Color Track       = new Color32(227, 220, 208, 255); // #E3DCD0
+            public static readonly Color Ink         = new Color32(29, 27, 24, 255);    // #1D1B18
+            public static readonly Color Muted       = new Color32(107, 101, 94, 255);  // #6B655E
+            public static readonly Color Coral       = new Color32(224, 109, 83, 255);  // #E06D53
+            public static readonly Color CoralDeep   = new Color32(196, 77, 52, 255);   // #C44D34
+            public static readonly Color Sage        = new Color32(82, 139, 118, 255);  // #528B76
+            public static readonly Color SageDeep    = new Color32(55, 112, 92, 255);   // #37705C
+            public static readonly Color Sky         = new Color32(90, 127, 163, 255);  // #5A7FA3
+            public static readonly Color SkyDeep     = new Color32(62, 100, 138, 255);  // #3E648A
+            public static readonly Color Amber       = new Color32(204, 140, 56, 255);  // #CC8C38
+            public static readonly Color White       = new Color32(255, 255, 255, 255);
+
+            private static Sprite _cardSprite;
+            private static Sprite _pillSprite;
+            private static Sprite _dotSprite;
+
+            public static Sprite GetCardSprite() => _cardSprite ?? (_cardSprite = CreateRoundedSprite(32, 10));
+            public static Sprite GetPillSprite() => _pillSprite ?? (_pillSprite = CreateRoundedSprite(32, 13));
+            public static Sprite GetDotSprite()  => _dotSprite  ?? (_dotSprite  = CreateRoundedSprite(16, 8));
+
+            private static Sprite CreateRoundedSprite(int size, int radius)
+            {
+                try
+                {
+                    var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+                    tex.filterMode = FilterMode.Bilinear;
+                    tex.wrapMode = TextureWrapMode.Clamp;
+                    var pixels = new Color32[size * size];
+                    float r = Mathf.Clamp(radius, 1, size / 2);
+                    float maxCoord = size - 1f;
+                    for (int y = 0; y < size; y++)
+                    {
+                        for (int x = 0; x < size; x++)
+                        {
+                            float dx = x < r ? (r - x) : (x > maxCoord - r ? (x - (maxCoord - r)) : 0f);
+                            float dy = y < r ? (r - y) : (y > maxCoord - r ? (y - (maxCoord - r)) : 0f);
+                            byte a = 255;
+                            if (dx > 0f && dy > 0f)
+                            {
+                                float dist = Mathf.Sqrt(dx * dx + dy * dy);
+                                float cov = Mathf.Clamp01(r - dist + 0.5f);
+                                a = (byte)Mathf.RoundToInt(cov * 255f);
+                            }
+                            pixels[y * size + x] = new Color32(255, 255, 255, a);
+                        }
+                    }
+                    tex.SetPixels32(pixels);
+                    tex.Apply(false, true);
+                    int b = Mathf.Min(radius, size / 2 - 1);
+                    return Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, new Vector4(b, b, b, b));
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            public static void MapButtonColors(Color origBg, out Color pondBg, out Color pondText)
+            {
+                // Already in Pond light palette? Preserve directly.
+                float lum = 0.299f * origBg.r + 0.587f * origBg.g + 0.114f * origBg.b;
+                if (lum > 0.78f)
+                {
+                    pondBg = origBg;
+                    pondText = Ink;
+                    return;
+                }
+                if (origBg.r > origBg.g + 0.14f && origBg.r > origBg.b + 0.12f)
+                {
+                    pondBg = Coral;
+                    pondText = White;
+                }
+                else if (origBg.g > origBg.r + 0.08f && origBg.g >= origBg.b)
+                {
+                    pondBg = Sage;
+                    pondText = White;
+                }
+                else if (origBg.b > origBg.r + 0.08f && origBg.b >= origBg.g)
+                {
+                    pondBg = Sky;
+                    pondText = White;
+                }
+                else if (origBg.r > 0.34f && origBg.g > 0.20f && origBg.b < 0.20f)
+                {
+                    pondBg = Amber;
+                    pondText = White;
+                }
+                else
+                {
+                    pondBg = Pill;
+                    pondText = Ink;
+                }
+            }
+
+            public static Color MapLabelColor(Color origColor)
+            {
+                float lum = 0.299f * origColor.r + 0.587f * origColor.g + 0.114f * origColor.b;
+                if (lum < 0.45f) return origColor;
+                if (origColor.g > origColor.r + 0.14f && origColor.g > origColor.b)
+                    return SageDeep;
+                if (origColor.b > origColor.r + 0.10f && origColor.b > origColor.g * 0.95f)
+                    return SkyDeep;
+                if (origColor.r > origColor.g + 0.16f && origColor.r > origColor.b + 0.16f)
+                    return CoralDeep;
+                if (origColor.r > 0.85f && origColor.g > 0.72f && origColor.b < 0.72f)
+                    return CoralDeep;
+                return Ink;
+            }
+        }
+
         private static GameObject CreateUGuiButton(
             Transform parent,
             string name,
@@ -799,6 +924,8 @@ namespace SilksongMobileAPI
             int fontSize,
             UnityEngine.Events.UnityAction onClick)
         {
+            PondUiTheme.MapButtonColors(bgColor, out Color pondBg, out Color pondText);
+
             var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Button));
             go.transform.SetParent(parent, false);
             var rt = go.GetComponent<RectTransform>();
@@ -809,10 +936,23 @@ namespace SilksongMobileAPI
             rt.sizeDelta = size;
 
             var img = go.GetComponent<UnityEngine.UI.Image>();
-            img.color = bgColor;
+            var pillSprite = PondUiTheme.GetPillSprite();
+            if (pillSprite != null)
+            {
+                img.sprite = pillSprite;
+                img.type = UnityEngine.UI.Image.Type.Sliced;
+            }
+            img.color = pondBg;
 
             var btn = go.GetComponent<UnityEngine.UI.Button>();
             btn.targetGraphic = img;
+            var cb = btn.colors;
+            cb.normalColor = Color.white;
+            cb.highlightedColor = new Color(0.95f, 0.94f, 0.92f, 1f);
+            cb.pressedColor = new Color(0.86f, 0.84f, 0.81f, 1f);
+            cb.selectedColor = cb.highlightedColor;
+            cb.fadeDuration = 0.08f;
+            btn.colors = cb;
             if (onClick != null)
                 btn.onClick.AddListener(onClick);
 
@@ -821,8 +961,8 @@ namespace SilksongMobileAPI
             var trt = txtGo.GetComponent<RectTransform>();
             trt.anchorMin = Vector2.zero;
             trt.anchorMax = Vector2.one;
-            trt.offsetMin = new Vector2(4f, 2f);
-            trt.offsetMax = new Vector2(-4f, -2f);
+            trt.offsetMin = new Vector2(8f, 2f);
+            trt.offsetMax = new Vector2(-8f, -2f);
 
             var txt = txtGo.GetComponent<UnityEngine.UI.Text>();
             txt.font = HarmonyBridge.GetFallbackFont() ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
@@ -830,7 +970,7 @@ namespace SilksongMobileAPI
             txt.fontSize = fontSize;
             txt.fontStyle = FontStyle.Bold;
             txt.alignment = TextAnchor.MiddleCenter;
-            txt.color = textColor;
+            txt.color = pondText;
             txt.raycastTarget = false;
             return go;
         }
@@ -859,7 +999,7 @@ namespace SilksongMobileAPI
             txt.fontSize = fontSize;
             txt.fontStyle = FontStyle.Bold;
             txt.alignment = align;
-            txt.color = color;
+            txt.color = PondUiTheme.MapLabelColor(color);
             txt.raycastTarget = false;
             return txt;
         }
@@ -2074,20 +2214,37 @@ namespace SilksongMobileAPI
             prt.anchoredPosition = new Vector2(0f, -20f);
             prt.sizeDelta = new Vector2(1460f, 860f);
             var pImg = _uGuiModConsolePanelGo.GetComponent<UnityEngine.UI.Image>();
-            pImg.color = new Color(0.08f, 0.07f, 0.10f, 0.96f);
+            var cardSprite = PondUiTheme.GetCardSprite();
+            if (cardSprite != null)
+            {
+                pImg.sprite = cardSprite;
+                pImg.type = UnityEngine.UI.Image.Type.Sliced;
+            }
+            pImg.color = PondUiTheme.Paper;
 
-            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.52)", new Vector2(-120f, 392f), new Vector2(1100f, 44f), 24, new Color(0.96f, 0.86f, 0.62f, 1f), TextAnchor.MiddleLeft);
+            // Subtle Pond coral dot + deep ink title
+            var dotGo = new GameObject("PondHeaderDot", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image));
+            dotGo.transform.SetParent(_uGuiModConsolePanelGo.transform, false);
+            var drt = dotGo.GetComponent<RectTransform>();
+            drt.anchoredPosition = new Vector2(-682f, 392f);
+            drt.sizeDelta = new Vector2(14f, 14f);
+            var dImg = dotGo.GetComponent<UnityEngine.UI.Image>();
+            dImg.sprite = PondUiTheme.GetDotSprite();
+            dImg.color = PondUiTheme.Coral;
+            dImg.raycastTarget = false;
 
-            CreateUGuiButton(_uGuiModConsolePanelGo.transform, "CloseBtn", "Close [X]", new Vector2(630f, 392f), new Vector2(150f, 44f), new Color(0.50f, 0.14f, 0.18f, 0.96f), Color.white, 18, () => SetShowModPanel(false));
+            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.56)", new Vector2(-100f, 392f), new Vector2(1100f, 44f), 24, PondUiTheme.Ink, TextAnchor.MiddleLeft);
 
-            // Top Tab Bar (6 tabs; SSMP tab removed per IRIS v2.9.8.23 policy)
+            CreateUGuiButton(_uGuiModConsolePanelGo.transform, "CloseBtn", "Close [X]", new Vector2(630f, 392f), new Vector2(150f, 44f), PondUiTheme.Coral, PondUiTheme.White, 18, () => SetShowModPanel(false));
+
+            // Top Tab Bar (6 rounded Pond pills; active tab highlighted in Pond Coral inside RebuildUGuiModConsoleContent)
             string[] tabs = new[] { "Hotkeys", "Keys09AZ", "Configs", "Installed", "Profile", "Debug" };
             string[] tabLabels = new[] { "F-Keys & Actions", "0-9 & A-Z Keys", "Mod Configs", "Installed Mods", "Profile", "Debug" };
             for (int i = 0; i < tabs.Length; i++)
             {
                 string tabId = tabs[i];
                 float x = -570f + i * 228f;
-                CreateUGuiButton(_uGuiModConsolePanelGo.transform, "Tab_" + tabId, tabLabels[i], new Vector2(x, 330f), new Vector2(218f, 48f), new Color(0.22f, 0.14f, 0.22f, 0.95f), new Color(0.98f, 0.92f, 0.80f, 1f), 16, () =>
+                CreateUGuiButton(_uGuiModConsolePanelGo.transform, "Tab_" + tabId, tabLabels[i], new Vector2(x, 330f), new Vector2(218f, 48f), PondUiTheme.Pill, PondUiTheme.Ink, 16, () =>
                 {
                     _selectedModTab = tabId;
                     _uGuiPageIndex = 0;
@@ -2099,12 +2256,12 @@ namespace SilksongMobileAPI
                     if (profTabTr != null)
                     {
                         var blinker = profTabTr.gameObject.AddComponent<IrisUpdateBlinkBehavior>();
-                        blinker.Init(profTabTr.GetComponent<UnityEngine.UI.Image>(), profTabTr.GetComponentInChildren<UnityEngine.UI.Text>(), "Profile", "Profile [UPDATE!]", new Color(0.22f, 0.14f, 0.22f, 0.95f), new Color(0.92f, 0.56f, 0.10f, 0.98f), new Color(0.38f, 0.22f, 0.08f, 0.96f));
+                        blinker.Init(profTabTr.GetComponent<UnityEngine.UI.Image>(), profTabTr.GetComponentInChildren<UnityEngine.UI.Text>(), "Profile", "Profile [UPDATE!]", PondUiTheme.Pill, PondUiTheme.Coral, PondUiTheme.Amber);
                     }
                 }
             }
 
-            _uGuiModConsoleStatusText = CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "Ready.", new Vector2(0f, -395f), new Vector2(1380f, 36f), 17, new Color(0.65f, 0.95f, 0.75f, 1f), TextAnchor.MiddleCenter);
+            _uGuiModConsoleStatusText = CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "Ready.", new Vector2(0f, -395f), new Vector2(1380f, 36f), 17, PondUiTheme.SageDeep, TextAnchor.MiddleCenter);
 
             var contentGo = new GameObject("ContentRoot", typeof(RectTransform));
             contentGo.transform.SetParent(_uGuiModConsolePanelGo.transform, false);
@@ -2125,6 +2282,22 @@ namespace SilksongMobileAPI
             for (int i = _uGuiModConsoleContentRoot.childCount - 1; i >= 0; i--)
             {
                 Destroy(_uGuiModConsoleContentRoot.GetChild(i).gameObject);
+            }
+
+            // Highlight active Pond tab pill (zero allocations, runs only on tab tap)
+            if (_uGuiModConsolePanelGo != null)
+            {
+                string[] allTabs = new[] { "Hotkeys", "Keys09AZ", "Configs", "Installed", "Profile", "Debug" };
+                for (int t = 0; t < allTabs.Length; t++)
+                {
+                    var tr = _uGuiModConsolePanelGo.transform.Find("Tab_" + allTabs[t]);
+                    if (tr == null) continue;
+                    bool isSel = string.Equals(allTabs[t], _selectedModTab, StringComparison.Ordinal);
+                    var tImg = tr.GetComponent<UnityEngine.UI.Image>();
+                    var tTxt = tr.GetComponentInChildren<UnityEngine.UI.Text>();
+                    if (tImg != null) tImg.color = isSel ? PondUiTheme.Coral : PondUiTheme.Pill;
+                    if (tTxt != null) tTxt.color = isSel ? PondUiTheme.White : PondUiTheme.Ink;
+                }
             }
 
             if (_selectedModTab == "Hotkeys")
@@ -4081,7 +4254,7 @@ namespace SilksongMobileAPI
             {
                 LogDiagnosticWarn($"[Profile] Startup profile init notice: {exProf.Message}");
             }
-            LogDiagnosticInfo($"IRIS v2.9.8.52 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
+            LogDiagnosticInfo($"IRIS v2.9.8.56 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
             AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting();
             if (CfgEnableRemoteUpdateCheck?.Value ?? true)
             {
@@ -4117,7 +4290,7 @@ namespace SilksongMobileAPI
                     continue;
                 if (IsArchitectDependentModDir(modDir))
                 {
-                    LogDiagnosticInfo($"[PCMod] Ignoring Architect-dependent mod directory '{dirName}'.");
+                    LogDiagnosticInfo($"[PCMod] Ignoring excluded mod directory '{dirName}'.");
                     continue;
                 }
 
@@ -4428,6 +4601,7 @@ namespace SilksongMobileAPI
                 combined.IndexOf("CrestComposition", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 combined.IndexOf("RecentItemsDisplay", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 combined.IndexOf("WishUtil", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                combined.IndexOf("FsmMaster", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 string.Equals(asmShortName, "DebugMod", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(asmShortName, "CrestsEvolve", StringComparison.OrdinalIgnoreCase) ||
                 combined.IndexOf("Lib", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -4761,7 +4935,7 @@ namespace SilksongMobileAPI
 
                 _panelRect.x = Mathf.Clamp(_panelRect.x, 16f, Mathf.Max(16f, vWidth - _panelRect.width - 16f));
                 _panelRect.y = Mathf.Clamp(_panelRect.y, 16f, Mathf.Max(16f, vHeight - _panelRect.height - 16f));
-                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.52)", _styleWindow);
+                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.56)", _styleWindow);
             }
             catch (System.Exception __apiEx_46) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("SilksongMobileAPIPlugin", "L2463", __apiEx_46); }
             finally
@@ -6116,31 +6290,35 @@ namespace SilksongMobileAPI
 
             var rootRect = GetComponent<RectTransform>();
 
-            // Colors (Stealth Cinema Ribbon — Flat Dark Mode, Zero Gradients)
-            Color colBackdrop = new Color32(6, 6, 8, 255);      // #060608
-            Color colStripBg = new Color32(13, 13, 17, 255);   // #0D0D11
-            Color colBorder = new Color32(34, 34, 44, 255);    // #22222C
-            Color colTrack = new Color32(23, 23, 31, 255);     // #17171F
-            Color colPrimary = new Color32(236, 236, 239, 255);// #ECECEF
-            Color colMuted = new Color32(154, 154, 168, 255);  // #9A9AA8
-            Color colDim = new Color32(110, 110, 128, 255);    // #6E6E80
-            Color colBadgeBg = new Color32(19, 19, 26, 255);   // #13131A
+            // Colors (Pond Editorial Paper UI — Warm Alabaster, Soft Stone, Deep Ink, Pond Coral, Zero Shaders)
+            Color colBackdrop = SilksongMobileAPIPlugin.PondUiTheme.Paper;
+            Color colStripBg  = SilksongMobileAPIPlugin.PondUiTheme.Card;
+            Color colBorder   = SilksongMobileAPIPlugin.PondUiTheme.CardBorder;
+            Color colTrack    = SilksongMobileAPIPlugin.PondUiTheme.Track;
+            Color colPrimary  = SilksongMobileAPIPlugin.PondUiTheme.Ink;
+            Color colMuted    = SilksongMobileAPIPlugin.PondUiTheme.Muted;
+            Color colCoral    = SilksongMobileAPIPlugin.PondUiTheme.Coral;
+            Color colBadgeBg  = SilksongMobileAPIPlugin.PondUiTheme.Pill;
+            var cardSprite = SilksongMobileAPIPlugin.PondUiTheme.GetCardSprite();
+            var pillSprite = SilksongMobileAPIPlugin.PondUiTheme.GetPillSprite();
+            var dotSprite  = SilksongMobileAPIPlugin.PondUiTheme.GetDotSprite();
 
-            // 1. Pure Flat Dark Fullscreen Backdrop (#060608)
+            // 1. Warm Alabaster Fullscreen Backdrop (#FAF8F4)
             CreatePanel(rootRect, "CinemaBackdrop", Vector2.zero, new Vector2(2400f, 1400f), colBackdrop);
 
-            // 2. Top Letterbox Strip (#0D0D11, height 72px) + 1px Bottom Border (#22222C)
+            // 2. Top Soft-Stone Strip (#F3EFE8, height 72px) + 1.5px Warm Border
             var topStrip = CreatePanel(rootRect, "TopLetterboxStrip", new Vector2(0f, 504f), new Vector2(1920f, 72f), colStripBg).rectTransform;
             CreatePanel(topStrip, "TopStripBorder", new Vector2(0f, -36f), new Vector2(1920f, 1.5f), colBorder);
 
-            // Left Square Indicator + "IRIS v2.9.8.52"
-            CreatePanel(topStrip, "TopSquareDot", new Vector2(-896f, 0f), new Vector2(10f, 10f), colPrimary);
+            // Left Pond Coral Dot + "IRIS v2.9.8.56"
+            var topDot = CreatePanel(topStrip, "TopSquareDot", new Vector2(-896f, 0f), new Vector2(12f, 12f), colCoral);
+            if (dotSprite != null) topDot.sprite = dotSprite;
             _topVersionTextComp = CreateLabel(
                 topStrip,
                 "TopVersionLabel",
                 new Vector2(-420f, 0f),
                 new Vector2(920f, 40f),
-                "IRIS v2.9.8.52",
+                "IRIS v2.9.8.56",
                 20,
                 FontStyle.Bold,
                 colPrimary,
@@ -6155,39 +6333,49 @@ namespace SilksongMobileAPI
                 "5%",
                 22,
                 FontStyle.Bold,
-                colPrimary,
+                colCoral,
                 TextAnchor.MiddleRight);
 
-            // 3. Center Cinema Space — "IRIS / <Random Message>"
+            // 3. Center Pond Floating Card — "IRIS / <Random Message>"
+            var centerBorderImg = CreatePanel(rootRect, "CenterPondCardBorder", new Vector2(0f, 0f), new Vector2(1384f, 256f), colBorder);
+            var centerCardImg   = CreatePanel(rootRect, "CenterPondCard", new Vector2(0f, 0f), new Vector2(1380f, 252f), colStripBg);
+            if (cardSprite != null)
+            {
+                centerBorderImg.sprite = cardSprite; centerBorderImg.type = UnityEngine.UI.Image.Type.Sliced;
+                centerCardImg.sprite = cardSprite;   centerCardImg.type = UnityEngine.UI.Image.Type.Sliced;
+            }
+            var centerCardRt = centerCardImg.rectTransform;
+
             _centerBrandTextComp = CreateLabel(
-                rootRect,
+                centerCardRt,
                 "CenterIrisBrand",
-                new Vector2(0f, 34f),
-                new Vector2(1600f, 56f),
+                new Vector2(0f, 46f),
+                new Vector2(1280f, 58f),
                 "IRIS",
-                42,
+                44,
                 FontStyle.Bold,
                 colPrimary,
                 TextAnchor.MiddleCenter);
 
-            CreatePanel(rootRect, "CenterDivider", new Vector2(0f, -4f), new Vector2(96f, 2f), colBorder);
+            var centerDiv = CreatePanel(centerCardRt, "CenterDivider", new Vector2(0f, 2f), new Vector2(88f, 4f), colCoral);
+            if (pillSprite != null) { centerDiv.sprite = pillSprite; centerDiv.type = UnityEngine.UI.Image.Type.Sliced; }
 
             _centerMessageTextComp = CreateLabel(
-                rootRect,
+                centerCardRt,
                 "CenterRandomMessage",
-                new Vector2(0f, -42f),
-                new Vector2(1720f, 48f),
+                new Vector2(0f, -44f),
+                new Vector2(1280f, 52f),
                 CurrentIrisMessage,
-                25,
+                24,
                 FontStyle.Normal,
                 colMuted,
                 TextAnchor.MiddleCenter);
 
-            // 4. Bottom Letterbox Strip (#0D0D11, height 84px) + 3px Razor-Sharp Edge-to-Edge Progress Line (#ECECEF)
+            // 4. Bottom Soft-Stone Strip (#F3EFE8, height 84px) + Coral Progress Pill Line
             var bottomStrip = CreatePanel(rootRect, "BottomLetterboxStrip", new Vector2(0f, -498f), new Vector2(1920f, 84f), colStripBg).rectTransform;
-            var barTrack = CreatePanel(bottomStrip, "BottomProgressTrack", new Vector2(0f, 40.5f), new Vector2(1920f, 3.5f), colTrack).rectTransform;
+            var barTrack = CreatePanel(bottomStrip, "BottomProgressTrack", new Vector2(0f, 40.5f), new Vector2(1920f, 5f), colTrack).rectTransform;
 
-            var fillImg = CreatePanel(barTrack, "BottomProgressFill", Vector2.zero, new Vector2(0f, 3.5f), colPrimary);
+            var fillImg = CreatePanel(barTrack, "BottomProgressFill", Vector2.zero, new Vector2(0f, 5f), colCoral);
             _fillBarRect = fillImg.rectTransform;
             _fillBarRect.anchorMin = new Vector2(0f, 0.5f);
             _fillBarRect.anchorMax = new Vector2(0f, 0.5f);
@@ -6205,16 +6393,18 @@ namespace SilksongMobileAPI
                 colMuted,
                 TextAnchor.MiddleLeft);
 
-            var badgeBox = CreatePanel(bottomStrip, "BottomStepBadge", new Vector2(810f, -2f), new Vector2(184f, 36f), colBadgeBg).rectTransform;
+            var badgeImg = CreatePanel(bottomStrip, "BottomStepBadge", new Vector2(810f, -2f), new Vector2(184f, 36f), colBadgeBg);
+            if (pillSprite != null) { badgeImg.sprite = pillSprite; badgeImg.type = UnityEngine.UI.Image.Type.Sliced; }
+            var badgeBox = badgeImg.rectTransform;
             _bottomStepBadgeTextComp = CreateLabel(
                 badgeBox,
                 "BottomStepBadgeText",
                 Vector2.zero,
                 new Vector2(176f, 32f),
-                "IRIS v2.9.8.52",
+                "IRIS v2.9.8.56",
                 15,
                 FontStyle.Bold,
-                colDim,
+                colPrimary,
                 TextAnchor.MiddleCenter);
 
             if (!IsOperationMode)
@@ -6227,13 +6417,15 @@ namespace SilksongMobileAPI
 
         private void BuildDisclaimerOverlay(RectTransform rootRect)
         {
-            Color colBackdrop = new Color32(6, 6, 8, 255);      // #060608
-            Color colCardBg   = new Color32(13, 13, 17, 255);   // #0D0D11
-            Color colBorder   = new Color32(46, 46, 60, 255);   // #2E2E3C
-            Color colTrack    = new Color32(23, 23, 31, 255);   // #17171F
-            Color colGold     = new Color32(242, 216, 155, 255);// #F2D89B
-            Color colPrimary  = new Color32(236, 236, 239, 255);// #ECECEF
-            Color colMuted    = new Color32(154, 154, 168, 255);// #9A9AA8
+            Color colBackdrop = SilksongMobileAPIPlugin.PondUiTheme.Paper;
+            Color colCardBg   = SilksongMobileAPIPlugin.PondUiTheme.Card;
+            Color colBorder   = SilksongMobileAPIPlugin.PondUiTheme.CardBorder;
+            Color colTrack    = SilksongMobileAPIPlugin.PondUiTheme.Track;
+            Color colCoral    = SilksongMobileAPIPlugin.PondUiTheme.Coral;
+            Color colPrimary  = SilksongMobileAPIPlugin.PondUiTheme.Ink;
+            Color colMuted    = SilksongMobileAPIPlugin.PondUiTheme.Muted;
+            var cardSprite = SilksongMobileAPIPlugin.PondUiTheme.GetCardSprite();
+            var pillSprite = SilksongMobileAPIPlugin.PondUiTheme.GetPillSprite();
 
             _disclaimerRoot = new GameObject("DisclaimerOverlayRoot", typeof(RectTransform), typeof(CanvasGroup));
             _disclaimerRoot.transform.SetParent(rootRect, false);
@@ -6248,15 +6440,22 @@ namespace SilksongMobileAPI
             _disclaimerGroup.blocksRaycasts = true;
             _disclaimerGroup.interactable = false;
 
-            // Fullscreen flat dark backdrop matching Stealth Cinema Ribbon
+            // Fullscreen warm alabaster Pond backdrop
             CreatePanel(drt, "DisclaimerBackdrop", Vector2.zero, new Vector2(2400f, 1400f), colBackdrop);
 
-            // Outer hairline border frame + inner dark card (1580 x 720)
-            CreatePanel(drt, "DisclaimerCardBorder", Vector2.zero, new Vector2(1584f, 724f), colBorder);
-            var cardRt = CreatePanel(drt, "DisclaimerCardBg", Vector2.zero, new Vector2(1580f, 720f), colCardBg).rectTransform;
+            // Outer rounded stone border + inner warm Pond card (1580 x 720)
+            var discBorderImg = CreatePanel(drt, "DisclaimerCardBorder", Vector2.zero, new Vector2(1584f, 724f), colBorder);
+            var discCardImg   = CreatePanel(drt, "DisclaimerCardBg", Vector2.zero, new Vector2(1580f, 720f), colCardBg);
+            if (cardSprite != null)
+            {
+                discBorderImg.sprite = cardSprite; discBorderImg.type = UnityEngine.UI.Image.Type.Sliced;
+                discCardImg.sprite = cardSprite;   discCardImg.type = UnityEngine.UI.Image.Type.Sliced;
+            }
+            var cardRt = discCardImg.rectTransform;
 
-            // Top gold accent rule
-            CreatePanel(cardRt, "DisclaimerTopAccent", new Vector2(0f, 358f), new Vector2(1580f, 4f), colGold);
+            // Top coral accent pill
+            var accentImg = CreatePanel(cardRt, "DisclaimerTopAccent", new Vector2(0f, 342f), new Vector2(160f, 5f), colCoral);
+            if (pillSprite != null) { accentImg.sprite = pillSprite; accentImg.type = UnityEngine.UI.Image.Type.Sliced; }
 
             // Centered DISCLAIMER header
             CreateLabel(
@@ -6267,13 +6466,13 @@ namespace SilksongMobileAPI
                 "DISCLAIMER",
                 38,
                 FontStyle.Bold,
-                colGold,
+                colPrimary,
                 TextAnchor.MiddleCenter);
 
             // Subtle divider under title
             CreatePanel(cardRt, "DisclaimerTitleDivider", new Vector2(0f, 246f), new Vector2(240f, 2f), colBorder);
 
-            // Readable wrapped disclaimer body text
+            // Readable wrapped disclaimer body text in deep ink
             const string disclaimerBody =
                 "This Layer doesn't modify the mods,IRIS It intercepts PC mod assemblies on boot, transforms their IL bytecode on-device, bridges Harmony patches into AOT-safe HybridCLR hook chains, repairs shaders and oversized textures, polyfills stripped .NET APIs, and injects a native mobile touch UI with on-screen button mapping.Which eliminates the procedure of porting,but it also eliminates the need of asking creator for permission,that is why mod listed here are all mods which have Permission to allowed to be ported,MIT or GPL license  and Personally asked for permission by someone from porting community.If any closed source mod works with IRIS it is due to pure coincidence and IRIS doesn't support it,that is why its recommended you play with the mods in modding list only.IRIS also generates credits.txt file in mods folder to thank the original creator for the mods.It is just a txt file and doesn't do anything else.";
 
@@ -6291,9 +6490,9 @@ namespace SilksongMobileAPI
             bodyTxt.verticalOverflow = VerticalWrapMode.Overflow;
             bodyTxt.lineSpacing = 1.28f;
 
-            // Bottom progress hairline track (1580px wide)
-            var trackRt = CreatePanel(cardRt, "DisclaimerProgressTrack", new Vector2(0f, -296f), new Vector2(1580f, 3.5f), colTrack).rectTransform;
-            var fillImg = CreatePanel(trackRt, "DisclaimerProgressFill", Vector2.zero, new Vector2(0f, 3.5f), colGold);
+            // Bottom progress hairline track (1480px wide, Pond coral fill)
+            var trackRt = CreatePanel(cardRt, "DisclaimerProgressTrack", new Vector2(0f, -296f), new Vector2(1480f, 5f), colTrack).rectTransform;
+            var fillImg = CreatePanel(trackRt, "DisclaimerProgressFill", Vector2.zero, new Vector2(0f, 5f), colCoral);
             _disclaimerFillBarRect = fillImg.rectTransform;
             _disclaimerFillBarRect.anchorMin = new Vector2(0f, 0.5f);
             _disclaimerFillBarRect.anchorMax = new Vector2(0f, 0.5f);
@@ -6306,7 +6505,7 @@ namespace SilksongMobileAPI
                 "DisclaimerFooterLeft",
                 new Vector2(-420f, -328f),
                 new Vector2(680f, 36f),
-                "IRIS v2.9.8.52  //  PC MOD COMPATIBILITY LAYER",
+                "IRIS v2.9.8.56  //  PC MOD COMPATIBILITY LAYER",
                 17,
                 FontStyle.Bold,
                 colMuted,
@@ -6320,7 +6519,7 @@ namespace SilksongMobileAPI
                 "CONTINUING IN 7s",
                 18,
                 FontStyle.Bold,
-                colGold,
+                colCoral,
                 TextAnchor.MiddleRight);
 
             _showingDisclaimer = true;
@@ -6331,7 +6530,7 @@ namespace SilksongMobileAPI
             float clampedProg = Mathf.Clamp01(Progress);
             int pct = Mathf.RoundToInt(clampedProg * 100f);
             if (_fillBarRect != null)
-                _fillBarRect.sizeDelta = new Vector2(_barMaxWidth * clampedProg, 3.5f);
+                _fillBarRect.sizeDelta = new Vector2(_barMaxWidth * clampedProg, 5f);
             if (_topPctTextComp != null)
                 _topPctTextComp.text = pct.ToString() + "%";
             if (_centerMessageTextComp != null)
@@ -6415,7 +6614,7 @@ namespace SilksongMobileAPI
             float clampedProg = Mathf.Clamp01(Progress);
             float fillW = _barMaxWidth * clampedProg;
             if (_fillBarRect != null)
-                _fillBarRect.sizeDelta = new Vector2(fillW, 3.5f);
+                _fillBarRect.sizeDelta = new Vector2(fillW, 5f);
 
             int pct = Mathf.RoundToInt(clampedProg * 100f);
             if (pct != _lastDisplayedPct || !ReferenceEquals(StatusText, _lastStatusStr) || _currentMessageIndex != _lastDisplayedMsgIdx)
@@ -6477,7 +6676,7 @@ namespace SilksongMobileAPI
                     elapsed += Mathf.Min(Time.unscaledDeltaTime, 0.1f);
                     float t = Mathf.Clamp01(elapsed / duration);
                     if (_disclaimerFillBarRect != null)
-                        _disclaimerFillBarRect.sizeDelta = new Vector2(1580f * t, 3.5f);
+                        _disclaimerFillBarRect.sizeDelta = new Vector2(1480f * t, 5f);
                     int rem = Mathf.Clamp(Mathf.CeilToInt(duration - elapsed), 1, 7);
                     if (rem != lastSec && _disclaimerCountdownText != null)
                     {
@@ -6487,7 +6686,7 @@ namespace SilksongMobileAPI
                     yield return null;
                 }
                 if (_disclaimerFillBarRect != null)
-                    _disclaimerFillBarRect.sizeDelta = new Vector2(1580f, 3.5f);
+                    _disclaimerFillBarRect.sizeDelta = new Vector2(1480f, 5f);
                 float fade = 1f;
                 while (fade > 0.01f)
                 {
@@ -6501,7 +6700,7 @@ namespace SilksongMobileAPI
                 _showingDisclaimer = false;
                 _watchdogElapsed = 0f;
             }
-            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.52)...");
+            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.56)...");
             TrySetBackgroundLoadingPriority(ThreadPriority.High);
             yield return null;
 

@@ -254,6 +254,137 @@ namespace SilksongMobileAPI
                         });
                     SilksongMobileAPIPlugin.LogDiagnosticInfo("[HarmonyBridge] Registered TomlTypeConverter for BepInEx.Configuration.KeyboardShortcut.");
                 }
+                if (!TomlTypeConverter.CanConvert(typeof(UnityEngine.Color)))
+                {
+                    TomlTypeConverter.AddConverter(
+                        typeof(UnityEngine.Color),
+                        new TypeConverter
+                        {
+                            ConvertToString = (obj, type) => obj is UnityEngine.Color c ? ColorUtility_ToHtmlStringRGBA(c) : "FFFFFFFF",
+                            ConvertToObject = (str, type) =>
+                            {
+                                try
+                                {
+                                    if (string.IsNullOrWhiteSpace(str)) return UnityEngine.Color.white;
+                                    string s = str.Trim();
+                                    string hex = s.StartsWith("#", StringComparison.Ordinal) ? s.Substring(1) : s;
+                                    if ((hex.Length == 6 || hex.Length == 8) &&
+                                        uint.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out uint packed))
+                                    {
+                                        if (hex.Length == 6)
+                                        {
+                                            float r = ((packed >> 16) & 0xFF) / 255f;
+                                            float g = ((packed >> 8) & 0xFF) / 255f;
+                                            float b = (packed & 0xFF) / 255f;
+                                            return new UnityEngine.Color(r, g, b, 1f);
+                                        }
+                                        else
+                                        {
+                                            float r = ((packed >> 24) & 0xFF) / 255f;
+                                            float g = ((packed >> 16) & 0xFF) / 255f;
+                                            float b = ((packed >> 8) & 0xFF) / 255f;
+                                            float a = (packed & 0xFF) / 255f;
+                                            return new UnityEngine.Color(r, g, b, a);
+                                        }
+                                    }
+                                    string cleaned = s.Replace("RGBA(", "").Replace("RGB(", "").Replace("(", "").Replace(")", "");
+                                    var parts = cleaned.Split(',');
+                                    if (parts.Length >= 3 &&
+                                        float.TryParse(parts[0].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float pr) &&
+                                        float.TryParse(parts[1].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float pg) &&
+                                        float.TryParse(parts[2].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float pb))
+                                    {
+                                        float pa = 1f;
+                                        if (parts.Length >= 4 && float.TryParse(parts[3].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float parsedA))
+                                            pa = parsedA;
+                                        return new UnityEngine.Color(pr, pg, pb, pa);
+                                    }
+                                }
+                                catch { }
+                                return UnityEngine.Color.white;
+                            }
+                        });
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo("[HarmonyBridge] Registered TomlTypeConverter for UnityEngine.Color.");
+                }
+                Func<string, string, float, float> parseJsonFloat = (raw, key, defVal) =>
+                {
+                    if (string.IsNullOrEmpty(raw)) return defVal;
+                    var m = System.Text.RegularExpressions.Regex.Match(raw, "\"" + key + "\"\\s*:\\s*([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)");
+                    if (m.Success && float.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float val))
+                        return val;
+                    return defVal;
+                };
+                var inv = System.Globalization.CultureInfo.InvariantCulture;
+                if (!TomlTypeConverter.CanConvert(typeof(UnityEngine.Vector2)))
+                {
+                    TomlTypeConverter.AddConverter(
+                        typeof(UnityEngine.Vector2),
+                        new TypeConverter
+                        {
+                            ConvertToString = (obj, type) => obj is UnityEngine.Vector2 v ? string.Format(inv, "{{\"x\":{0},\"y\":{1}}}", v.x, v.y) : "{\"x\":0,\"y\":0}",
+                            ConvertToObject = (str, type) =>
+                            {
+                                try { return new UnityEngine.Vector2(parseJsonFloat(str, "x", 0f), parseJsonFloat(str, "y", 0f)); }
+                                catch { return UnityEngine.Vector2.zero; }
+                            }
+                        });
+                }
+                if (!TomlTypeConverter.CanConvert(typeof(UnityEngine.Vector3)))
+                {
+                    TomlTypeConverter.AddConverter(
+                        typeof(UnityEngine.Vector3),
+                        new TypeConverter
+                        {
+                            ConvertToString = (obj, type) => obj is UnityEngine.Vector3 v ? string.Format(inv, "{{\"x\":{0},\"y\":{1},\"z\":{2}}}", v.x, v.y, v.z) : "{\"x\":0,\"y\":0,\"z\":0}",
+                            ConvertToObject = (str, type) =>
+                            {
+                                try { return new UnityEngine.Vector3(parseJsonFloat(str, "x", 0f), parseJsonFloat(str, "y", 0f), parseJsonFloat(str, "z", 0f)); }
+                                catch { return UnityEngine.Vector3.zero; }
+                            }
+                        });
+                }
+                if (!TomlTypeConverter.CanConvert(typeof(UnityEngine.Vector4)))
+                {
+                    TomlTypeConverter.AddConverter(
+                        typeof(UnityEngine.Vector4),
+                        new TypeConverter
+                        {
+                            ConvertToString = (obj, type) => obj is UnityEngine.Vector4 v ? string.Format(inv, "{{\"x\":{0},\"y\":{1},\"z\":{2},\"w\":{3}}}", v.x, v.y, v.z, v.w) : "{\"x\":0,\"y\":0,\"z\":0,\"w\":0}",
+                            ConvertToObject = (str, type) =>
+                            {
+                                try { return new UnityEngine.Vector4(parseJsonFloat(str, "x", 0f), parseJsonFloat(str, "y", 0f), parseJsonFloat(str, "z", 0f), parseJsonFloat(str, "w", 0f)); }
+                                catch { return UnityEngine.Vector4.zero; }
+                            }
+                        });
+                }
+                if (!TomlTypeConverter.CanConvert(typeof(UnityEngine.Quaternion)))
+                {
+                    TomlTypeConverter.AddConverter(
+                        typeof(UnityEngine.Quaternion),
+                        new TypeConverter
+                        {
+                            ConvertToString = (obj, type) => obj is UnityEngine.Quaternion q ? string.Format(inv, "{{\"x\":{0},\"y\":{1},\"z\":{2},\"w\":{3}}}", q.x, q.y, q.z, q.w) : "{\"x\":0,\"y\":0,\"z\":0,\"w\":1}",
+                            ConvertToObject = (str, type) =>
+                            {
+                                try { return new UnityEngine.Quaternion(parseJsonFloat(str, "x", 0f), parseJsonFloat(str, "y", 0f), parseJsonFloat(str, "z", 0f), parseJsonFloat(str, "w", 1f)); }
+                                catch { return UnityEngine.Quaternion.identity; }
+                            }
+                        });
+                }
+                if (!TomlTypeConverter.CanConvert(typeof(UnityEngine.Rect)))
+                {
+                    TomlTypeConverter.AddConverter(
+                        typeof(UnityEngine.Rect),
+                        new TypeConverter
+                        {
+                            ConvertToString = (obj, type) => obj is UnityEngine.Rect r ? string.Format(inv, "{{\"x\":{0},\"y\":{1},\"width\":{2},\"height\":{3}}}", r.x, r.y, r.width, r.height) : "{\"x\":0,\"y\":0,\"width\":0,\"height\":0}",
+                            ConvertToObject = (str, type) =>
+                            {
+                                try { return new UnityEngine.Rect(parseJsonFloat(str, "x", 0f), parseJsonFloat(str, "y", 0f), parseJsonFloat(str, "width", 0f), parseJsonFloat(str, "height", 0f)); }
+                                catch { return new UnityEngine.Rect(); }
+                            }
+                        });
+                }
             }
             catch (Exception ex)
             {
