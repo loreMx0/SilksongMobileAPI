@@ -5905,9 +5905,102 @@ namespace SilksongMobileAPI
         private static bool _paBossSceneFieldLookedUp;
         private static FieldInfo _paDisableParryFreezeField;
         private static bool _paDisableParryFreezeFieldLookedUp;
+        private static BepInEx.Configuration.ConfigEntryBase _paDisableParryFreezeConfigEntry;
+        private static bool _paDisableParryFreezeConfigLookedUp;
+        private static bool _paParryFreezeSyncing;
 
-        public static void SyncPaleAutomatonParryFreezeSetting()
+        private static BepInEx.Configuration.ConfigEntryBase ResolvePaleAutomatonDisableParryFreezeConfigEntry()
         {
+            if (_paDisableParryFreezeConfigLookedUp && _paDisableParryFreezeConfigEntry != null)
+                return _paDisableParryFreezeConfigEntry;
+            try
+            {
+                var pluginType = HarmonyBridge.ResolveTypeRobust("PaleAutomaton.PaleAutomatonPlugin");
+                if (pluginType == null) return null;
+                object inst = null;
+                var instProp = pluginType.GetProperty("Instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (instProp != null) inst = instProp.GetValue(null, null);
+                if (inst == null)
+                {
+                    var instField = pluginType.GetField("<Instance>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic)
+                        ?? pluginType.GetField("Instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (instField != null) inst = instField.GetValue(null);
+                }
+                if (inst is BepInEx.BaseUnityPlugin bup && bup.Config != null)
+                {
+                    var def = new BepInEx.Configuration.ConfigDefinition("Accessibility", "Disable Parry Freeze");
+                    if (bup.Config.TryGetEntry<bool>(def, out var typedEntry))
+                    {
+                        _paDisableParryFreezeConfigEntry = typedEntry;
+                        _paDisableParryFreezeConfigLookedUp = true;
+                        return _paDisableParryFreezeConfigEntry;
+                    }
+                    var entriesProp = typeof(BepInEx.Configuration.ConfigFile).GetProperty("Entries", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    var dict = entriesProp?.GetValue(bup.Config, null) as System.Collections.IDictionary;
+                    if (dict != null)
+                    {
+                        foreach (System.Collections.DictionaryEntry de in dict)
+                        {
+                            if (de.Value is BepInEx.Configuration.ConfigEntryBase ceb && ceb.Definition != null &&
+                                string.Equals(ceb.Definition.Key, "Disable Parry Freeze", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _paDisableParryFreezeConfigEntry = ceb;
+                                _paDisableParryFreezeConfigLookedUp = true;
+                                return _paDisableParryFreezeConfigEntry;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return _paDisableParryFreezeConfigEntry;
+        }
+
+        public static bool IsPaleAutomatonParryFreezeEnabled()
+        {
+            if (SilksongMobileAPIPlugin.CfgPaleAutomatonParryFreeze != null &&
+                !SilksongMobileAPIPlugin.CfgPaleAutomatonParryFreeze.Value)
+                return false;
+            try
+            {
+                var paCfg = ResolvePaleAutomatonDisableParryFreezeConfigEntry();
+                if (paCfg != null && paCfg.BoxedValue is bool cfgDisable && cfgDisable)
+                    return false;
+                if (_paDisableParryFreezeField != null && _paDisableParryFreezeField.GetValue(null) is bool disableFlag && disableFlag)
+                    return false;
+            }
+            catch { }
+            return true;
+        }
+
+        public static bool PaleAutomatonFreezeMomentInt_Prefix(int type)
+        {
+            if ((type == 3 || type == 10) && IsPaleAutomatonBossSceneActive())
+            {
+                if (type == 10 || !IsPaleAutomatonParryFreezeEnabled())
+                    return false;
+            }
+            return true;
+        }
+
+        public static bool PaleAutomatonFreezeMomentEnum_Prefix(GlobalEnums.FreezeMomentTypes type, Action onFinish)
+        {
+            int t = (int)type;
+            if ((t == 3 || t == 10) && IsPaleAutomatonBossSceneActive())
+            {
+                if (t == 10 || !IsPaleAutomatonParryFreezeEnabled())
+                {
+                    try { onFinish?.Invoke(); } catch { }
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        public static void SyncPaleAutomatonParryFreezeSetting(bool? explicitEnableFreeze = null, bool? explicitDisableFreeze = null)
+        {
+            if (_paParryFreezeSyncing) return;
+            _paParryFreezeSyncing = true;
             try
             {
                 if (!_paDisableParryFreezeFieldLookedUp)
@@ -5917,16 +6010,51 @@ namespace SilksongMobileAPI
                     _paDisableParryFreezeFieldLookedUp = true;
                     _paDisableParryFreezeField = settingsType.GetField("DISABLE_PARRY_FREEZE", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                 }
+
+                var paCfg = ResolvePaleAutomatonDisableParryFreezeConfigEntry();
+                var irisCfg = SilksongMobileAPIPlugin.CfgPaleAutomatonParryFreeze;
+                bool disableFreeze;
+
+                if (explicitDisableFreeze.HasValue)
+                {
+                    disableFreeze = explicitDisableFreeze.Value;
+                    if (irisCfg != null && irisCfg.Value != !disableFreeze)
+                    {
+                        irisCfg.Value = !disableFreeze;
+                        try { irisCfg.ConfigFile?.Save(); } catch { }
+                    }
+                }
+                else if (explicitEnableFreeze.HasValue)
+                {
+                    disableFreeze = !explicitEnableFreeze.Value;
+                    if (paCfg != null && (!(paCfg.BoxedValue is bool curDis) || curDis != disableFreeze))
+                    {
+                        paCfg.BoxedValue = disableFreeze;
+                        try { paCfg.ConfigFile?.Save(); } catch { }
+                    }
+                }
+                else
+                {
+                    bool paCfgDisable = paCfg != null && paCfg.BoxedValue is bool b && b;
+                    bool irisEnable = irisCfg?.Value ?? false;
+                    // Respect whichever config disables parry freeze (Pale Automaton defaults Disable Parry Freeze = true).
+                    disableFreeze = paCfgDisable || !irisEnable;
+                }
+
                 if (_paDisableParryFreezeField != null)
                 {
-                    bool enableFreeze = SilksongMobileAPIPlugin.CfgPaleAutomatonParryFreeze?.Value ?? true;
-                    _paDisableParryFreezeField.SetValue(null, !enableFreeze);
-                    SilksongMobileAPIPlugin.LogDiagnosticInfo($"[PaleAutomaton] Synced DISABLE_PARRY_FREEZE={!enableFreeze} (PaleAutomatonParryFreeze={enableFreeze}).");
+                    _paDisableParryFreezeField.SetValue(null, disableFreeze);
+                    SilksongMobileAPIPlugin.LogDiagnosticInfo(
+                        $"[PaleAutomaton] Synced DISABLE_PARRY_FREEZE={disableFreeze} (PaleAutomatonCfg.DisableParryFreeze={(paCfg?.BoxedValue?.ToString() ?? "n/a")}, IRIS.PaleAutomatonParryFreeze={(irisCfg?.Value.ToString() ?? "n/a")}).");
                 }
             }
             catch (System.Exception ex)
             {
                 SilksongMobileAPIPlugin.LogApiCatch("AssetHelperBridge", "SyncPaleAutomatonParryFreezeSetting", ex);
+            }
+            finally
+            {
+                _paParryFreezeSyncing = false;
             }
         }
 
@@ -11151,6 +11279,24 @@ namespace SilksongMobileAPI
             EnsureRepackerMembersResolved();
             if (_universalAssetHelperHooksInstalled) return;
             _universalAssetHelperHooksInstalled = true;
+
+            try
+            {
+                var gmType = typeof(GameManager);
+                var fmInt = gmType.GetMethod("FreezeMoment", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(int) }, null);
+                var fmIntPre = typeof(AssetHelperBridge).GetMethod(nameof(PaleAutomatonFreezeMomentInt_Prefix), BindingFlags.Static | BindingFlags.Public);
+                if (fmInt != null && fmIntPre != null)
+                    RuntimeHybridCLRAdapterBuilder.RegisterOrUpdateHookChain("IRIS.PaleAutomatonFreezeGuard", fmInt, fmIntPre, null, null, HarmonyLib.Priority.First);
+
+                var fmEnum = gmType.GetMethod("FreezeMoment", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(GlobalEnums.FreezeMomentTypes), typeof(Action) }, null);
+                var fmEnumPre = typeof(AssetHelperBridge).GetMethod(nameof(PaleAutomatonFreezeMomentEnum_Prefix), BindingFlags.Static | BindingFlags.Public);
+                if (fmEnum != null && fmEnumPre != null)
+                    RuntimeHybridCLRAdapterBuilder.RegisterOrUpdateHookChain("IRIS.PaleAutomatonFreezeGuard", fmEnum, fmEnumPre, null, null, HarmonyLib.Priority.First);
+            }
+            catch (System.Exception ex)
+            {
+                SilksongMobileAPIPlugin.LogApiCatch("AssetHelperBridge", "InstallPaleAutomatonFreezeGuard", ex);
+            }
 
             try
             {

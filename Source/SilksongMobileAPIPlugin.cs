@@ -595,9 +595,9 @@ namespace SilksongMobileAPI
                     "Apply Hollow Knight Mobile API AotContractResolver & Vector2/Vector3 JSON converters for IL2CPP/HybridCLR safety.");
                 CfgEnableCrashReporter = Config.Bind("Diagnostics", "EnableAndroidCrashReporter", true,
                     "Capture threaded Unity errors and AppDomain unhandled exceptions to Crash.log and SilksongMobileAPI_PCMods.log.");
-                CfgPaleAutomatonParryFreeze = Config.Bind("BossFixes", "PaleAutomatonParryFreeze", true,
-                    "Enable Aeternal Everwatcher-style parry freeze frames (FreezeMomentTypes.NailClashEffect) during the Pale Automaton boss fight.");
-                CfgPaleAutomatonParryFreeze.SettingChanged += (_, __) => AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting();
+                CfgPaleAutomatonParryFreeze = Config.Bind("BossFixes", "PaleAutomatonParryFreeze", false,
+                    "Enable Aeternal Everwatcher-style parry freeze frames (FreezeMomentTypes.NailClashEffect) during the Pale Automaton boss fight (false = no parry freeze, matching Pale Automaton's stock default).");
+                CfgPaleAutomatonParryFreeze.SettingChanged += (_, __) => AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting(explicitEnableFreeze: CfgPaleAutomatonParryFreeze.Value);
                 CfgPaleAutomatonPhaseGuard = Config.Bind("BossFixes", "PaleAutomatonPhaseGuard", true,
                     "Ensure Pale Automaton Phase 2/3 transitions fire reliably in Arborium_11 by hoisting PhaseCheck lambdas before SendEvent actions and providing an event-driven fallback if hp stays below threshold.");
                 CfgPaleAutomatonMinParryDamage = Config.Bind("BossFixes", "PaleAutomatonMinParryDamage", 10,
@@ -2233,7 +2233,7 @@ namespace SilksongMobileAPI
             dImg.color = PondUiTheme.Coral;
             dImg.raycastTarget = false;
 
-            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.56)", new Vector2(-100f, 392f), new Vector2(1100f, 44f), 24, PondUiTheme.Ink, TextAnchor.MiddleLeft);
+            CreateUGuiLabel(_uGuiModConsolePanelGo.transform, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.58)", new Vector2(-100f, 392f), new Vector2(1100f, 44f), 24, PondUiTheme.Ink, TextAnchor.MiddleLeft);
 
             CreateUGuiButton(_uGuiModConsolePanelGo.transform, "CloseBtn", "Close [X]", new Vector2(630f, 392f), new Vector2(150f, 44f), PondUiTheme.Coral, PondUiTheme.White, 18, () => SetShowModPanel(false));
 
@@ -2613,6 +2613,7 @@ namespace SilksongMobileAPI
                                     BepInEx.MobileVirtualInput.PulseShortcut(ks, true);
                                 else if (curVal is KeyCode kc)
                                     TriggerVirtualKeyFromUi(kc);
+                                NotifyConfigEntryToggled(item);
                                 RebuildUGuiModConsoleContent();
                             }
                             catch (System.Exception __apiEx_11) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("SilksongMobileAPIPlugin", "L1261", __apiEx_11); }
@@ -4254,7 +4255,7 @@ namespace SilksongMobileAPI
             {
                 LogDiagnosticWarn($"[Profile] Startup profile init notice: {exProf.Message}");
             }
-            LogDiagnosticInfo($"IRIS v2.9.8.56 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
+            LogDiagnosticInfo($"IRIS v2.9.8.58 scan complete. Loaded PC Mod assemblies: [{string.Join(", ", _loadedModNames)}]");
             AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting();
             if (CfgEnableRemoteUpdateCheck?.Value ?? true)
             {
@@ -4836,12 +4837,32 @@ namespace SilksongMobileAPI
             }
         }
 
+        private static void NotifyConfigEntryToggled(LoadedModConfigEntryInfo item)
+        {
+            if (item == null || item.Entry == null) return;
+            try { item.Entry.ConfigFile?.Save(); } catch { }
+            try
+            {
+                string key = item.Key ?? "";
+                if (string.Equals(key, "Disable Parry Freeze", StringComparison.OrdinalIgnoreCase) && item.Entry.BoxedValue is bool disVal)
+                    AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting(explicitDisableFreeze: disVal);
+                else if (string.Equals(key, "PaleAutomatonParryFreeze", StringComparison.OrdinalIgnoreCase) && item.Entry.BoxedValue is bool enVal)
+                    AssetHelperBridge.SyncPaleAutomatonParryFreezeSetting(explicitEnableFreeze: enVal);
+            }
+            catch (System.Exception ex)
+            {
+                LogApiCatch("SilksongMobileAPIPlugin", "NotifyConfigEntryToggled", ex);
+            }
+        }
+
         public static void RefreshDiscoveredModConfigs()
         {
             lock (_discoveredConfigs)
             {
                 _discoveredConfigs.Clear();
                 var allPlugins = new List<BaseUnityPlugin>();
+                if (Instance != null)
+                    allPlugins.Add(Instance);
                 lock (_instantiatedPcPlugins)
                 {
                     allPlugins.AddRange(_instantiatedPcPlugins);
@@ -4852,7 +4873,7 @@ namespace SilksongMobileAPI
                     if (found != null)
                     {
                         foreach (var p in found)
-                            if (p != null && p != Instance && !allPlugins.Contains(p))
+                            if (p != null && !allPlugins.Contains(p))
                                 allPlugins.Add(p);
                     }
                 }
@@ -4935,7 +4956,7 @@ namespace SilksongMobileAPI
 
                 _panelRect.x = Mathf.Clamp(_panelRect.x, 16f, Mathf.Max(16f, vWidth - _panelRect.width - 16f));
                 _panelRect.y = Mathf.Clamp(_panelRect.y, 16f, Mathf.Max(16f, vHeight - _panelRect.height - 16f));
-                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.56)", _styleWindow);
+                _panelRect = GUI.Window(94821, _panelRect, DrawModControlWindow, "IRIS — MOD, KEYBIND & PROFILE CONSOLE (IRIS v2.9.8.58)", _styleWindow);
             }
             catch (System.Exception __apiEx_46) { SilksongMobileAPI.SilksongMobileAPIPlugin.LogApiCatch("SilksongMobileAPIPlugin", "L2463", __apiEx_46); }
             finally
@@ -5440,6 +5461,7 @@ namespace SilksongMobileAPI
                                     if (GUILayout.Button(bVal ? "ON (Tap to Toggle)" : "OFF (Tap to Toggle)", GUILayout.Height(34f)))
                                     {
                                         item.Entry.BoxedValue = !bVal;
+                                        NotifyConfigEntryToggled(item);
                                     }
                                 }
                                 else if (item.SettingType != null && item.SettingType.IsEnum && val != null)
@@ -6310,7 +6332,7 @@ namespace SilksongMobileAPI
             var topStrip = CreatePanel(rootRect, "TopLetterboxStrip", new Vector2(0f, 504f), new Vector2(1920f, 72f), colStripBg).rectTransform;
             CreatePanel(topStrip, "TopStripBorder", new Vector2(0f, -36f), new Vector2(1920f, 1.5f), colBorder);
 
-            // Left Pond Coral Dot + "IRIS v2.9.8.56"
+            // Left Pond Coral Dot + "IRIS v2.9.8.58"
             var topDot = CreatePanel(topStrip, "TopSquareDot", new Vector2(-896f, 0f), new Vector2(12f, 12f), colCoral);
             if (dotSprite != null) topDot.sprite = dotSprite;
             _topVersionTextComp = CreateLabel(
@@ -6318,7 +6340,7 @@ namespace SilksongMobileAPI
                 "TopVersionLabel",
                 new Vector2(-420f, 0f),
                 new Vector2(920f, 40f),
-                "IRIS v2.9.8.56",
+                "IRIS v2.9.8.58",
                 20,
                 FontStyle.Bold,
                 colPrimary,
@@ -6401,7 +6423,7 @@ namespace SilksongMobileAPI
                 "BottomStepBadgeText",
                 Vector2.zero,
                 new Vector2(176f, 32f),
-                "IRIS v2.9.8.56",
+                "IRIS v2.9.8.58",
                 15,
                 FontStyle.Bold,
                 colPrimary,
@@ -6505,7 +6527,7 @@ namespace SilksongMobileAPI
                 "DisclaimerFooterLeft",
                 new Vector2(-420f, -328f),
                 new Vector2(680f, 36f),
-                "IRIS v2.9.8.56  //  PC MOD COMPATIBILITY LAYER",
+                "IRIS v2.9.8.58  //  PC MOD COMPATIBILITY LAYER",
                 17,
                 FontStyle.Bold,
                 colMuted,
@@ -6700,7 +6722,7 @@ namespace SilksongMobileAPI
                 _showingDisclaimer = false;
                 _watchdogElapsed = 0f;
             }
-            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.56)...");
+            SilksongMobileAPIPlugin.LogDiagnosticInfo("[FastPreloaderUI] Started Stealth Cinema Ribbon 60 FPS preloading sequence (IRIS v2.9.8.58)...");
             TrySetBackgroundLoadingPriority(ThreadPriority.High);
             yield return null;
 

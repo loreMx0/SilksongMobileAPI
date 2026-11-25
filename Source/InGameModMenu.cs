@@ -1849,7 +1849,7 @@ namespace SilksongMobileAPI
 
             List<Selectable> selectables = new List<Selectable>();
 
-            selectables.Add(CreateRowButton(contentTrans, "MOD KEYS, CONFIGS & PROFILE", () => SilksongMobileAPIPlugin.Instance?.OpenModPanel("Profile"), 34, 62f));
+            selectables.Add(CreateRowButton(contentTrans, "MOD KEYS, CONFIGS & PROFILE", () => { CloseModMenu(); SilksongMobileAPIPlugin.Instance?.OpenModPanel("Profile"); }, 34, 62f));
             selectables.Add(CreateRowButton(contentTrans, "INSTALL MODS", () => OpenInstallModsScreen(), 34, 62f));
             selectables.Add(CreateRowButton(contentTrans, "UNINSTALL MODS", () => OpenUninstallModsScreen(), 34, 62f));
             selectables.Add(CreateRowButton(contentTrans, "MANAGE MODS", () => OpenManageModsScreen(), 34, 62f));
@@ -2588,18 +2588,116 @@ namespace SilksongMobileAPI
         {
             try
             {
-                var loaderType = AccessTools.TypeByName("BepInEx.BepInExLoader");
-                var importMi = loaderType?.GetMethod("ImportPlugin", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-                if (importMi != null)
+                string zipMime = NativeFilePicker.ConvertExtensionToFileType("zip");
+                string[] allowedTypes = string.IsNullOrEmpty(zipMime)
+                    ? new[] { "application/zip", "application/octet-stream", "*/*" }
+                    : new[] { zipMime, "application/zip", "application/octet-stream", "*/*" };
+
+                NativeFilePicker.PickFile((string pickedPath) =>
                 {
-                    importMi.Invoke(null, null);
-                    if (SilksongMobileAPIPlugin.Instance != null)
-                        SilksongMobileAPIPlugin.Instance.StartCoroutine(CoRescanAfterImport());
-                }
+                    if (string.IsNullOrEmpty(pickedPath) || !File.Exists(pickedPath))
+                    {
+                        SilksongMobileAPIPlugin.LogDiagnosticInfo("[NativeModMenu] Import Mod cancelled or file not found.");
+                        return;
+                    }
+                    try
+                    {
+                        string pluginsRoot = Paths.PluginPath;
+                        if (string.IsNullOrEmpty(pluginsRoot))
+                            pluginsRoot = Path.Combine(Paths.BepInExRootPath, "plugins");
+                        Directory.CreateDirectory(pluginsRoot);
+
+                        string ext = (Path.GetExtension(pickedPath) ?? "").ToLowerInvariant();
+                        string rawBase = Path.GetFileNameWithoutExtension(pickedPath) ?? "ImportedMod";
+                        string safeName = System.Text.RegularExpressions.Regex.Replace(rawBase, @"[^a-zA-Z0-9._-]", "_");
+                        if (string.IsNullOrWhiteSpace(safeName)) safeName = "ImportedMod";
+
+                        string targetModDir;
+                        if (ext == ".zip")
+                        {
+                            using (var archive = ZipFile.OpenRead(pickedPath))
+                            {
+                                // Detect whether all valid entries share a single top-level directory
+                                string singleTopDir = null;
+                                bool hasMultipleOrRootFiles = false;
+                                foreach (var entry in archive.Entries)
+                                {
+                                    string norm = (entry.FullName ?? "").Replace('\\', '/').TrimStart('/');
+                                    if (string.IsNullOrEmpty(norm) || norm.StartsWith("__MACOSX/", StringComparison.OrdinalIgnoreCase)) continue;
+                                    int slash = norm.IndexOf('/');
+                                    if (slash <= 0)
+                                    {
+                                        hasMultipleOrRootFiles = true;
+                                        break;
+                                    }
+                                    string top = norm.Substring(0, slash);
+                                    if (singleTopDir == null) singleTopDir = top;
+                                    else if (!string.Equals(singleTopDir, top, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        hasMultipleOrRootFiles = true;
+                                        break;
+                                    }
+                                }
+
+                                bool extractToPluginsRoot = !hasMultipleOrRootFiles && !string.IsNullOrEmpty(singleTopDir) &&
+                                                            !string.Equals(singleTopDir, "plugins", StringComparison.OrdinalIgnoreCase) &&
+                                                            !string.Equals(singleTopDir, "BepInEx", StringComparison.OrdinalIgnoreCase);
+                                string extractBase = extractToPluginsRoot ? pluginsRoot : Path.Combine(pluginsRoot, safeName);
+                                targetModDir = extractToPluginsRoot ? Path.Combine(pluginsRoot, singleTopDir) : extractBase;
+                                Directory.CreateDirectory(extractBase);
+                                string fullBase = Path.GetFullPath(extractBase);
+                                if (!fullBase.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+                                    fullBase += Path.DirectorySeparatorChar;
+
+                                int extractedCount = 0;
+                                foreach (var entry in archive.Entries)
+                                {
+                                    string norm = (entry.FullName ?? "").Replace('\\', '/').TrimStart('/');
+                                    if (string.IsNullOrEmpty(norm) || norm.EndsWith("/", StringComparison.Ordinal)) continue;
+                                    if (norm.StartsWith("__MACOSX/", StringComparison.OrdinalIgnoreCase) || norm.EndsWith(".DS_Store", StringComparison.OrdinalIgnoreCase)) continue;
+                                    string destPath = Path.GetFullPath(Path.Combine(extractBase, norm));
+                                    if (!destPath.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase)) continue;
+                                    string destParent = Path.GetDirectoryName(destPath);
+                                    if (!string.IsNullOrEmpty(destParent)) Directory.CreateDirectory(destParent);
+                                    entry.ExtractToFile(destPath, true);
+                                    extractedCount++;
+                                }
+                                SilksongMobileAPIPlugin.LogDiagnosticInfo($"[NativeModMenu] Imported mod ZIP '{Path.GetFileName(pickedPath)}' ({extractedCount} files) into '{targetModDir}'.");
+                            }
+                        }
+                        else if (ext == ".dll")
+                        {
+                            targetModDir = Path.Combine(pluginsRoot, safeName);
+                            Directory.CreateDirectory(targetModDir);
+                            string destDll = Path.Combine(targetModDir, Path.GetFileName(pickedPath));
+                            File.Copy(pickedPath, destDll, true);
+                            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[NativeModMenu] Imported mod DLL '{Path.GetFileName(pickedPath)}' into '{targetModDir}'.");
+                        }
+                        else
+                        {
+                            SilksongMobileAPIPlugin.LogDiagnosticWarn($"[NativeModMenu] Unsupported mod file type '{ext}'. Please choose a .zip or .dll file.");
+                            return;
+                        }
+
+                        if (InGameModManager.Instance != null)
+                        {
+                            InGameModManager.Instance.GlobalStatusMessage = $"Imported {safeName}!";
+                            InGameModManager.Instance.ScanInstalledMods();
+                        }
+                        SilksongMobileAPIPlugin.PreOrganizeTopLevelPcModDlls();
+                        SilksongMobileAPIPlugin.HotLoadInstalledModDirectory(targetModDir);
+                        if (SilksongMobileAPIPlugin.Instance != null)
+                            SilksongMobileAPIPlugin.Instance.StartCoroutine(CoRescanAfterImport());
+                    }
+                    catch (Exception ex)
+                    {
+                        SilksongMobileAPIPlugin.LogDiagnosticError($"[NativeModMenu] Import Mod failed: {ex.Message}");
+                    }
+                }, allowedTypes);
             }
             catch (Exception ex)
             {
-                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[NativeModMenu] ImportPlugin notice: {ex.Message}");
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[NativeModMenu] Import Mod picker notice: {ex.Message}");
             }
         }
 
@@ -2618,13 +2716,60 @@ namespace SilksongMobileAPI
         {
             try
             {
-                var loaderType = AccessTools.TypeByName("BepInEx.BepInExLoader");
-                var importSaveMi = loaderType?.GetMethod("ImportSaveData", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-                importSaveMi?.Invoke(null, null);
+                NativeFilePicker.PickFile((string pickedPath) =>
+                {
+                    if (string.IsNullOrEmpty(pickedPath) || !File.Exists(pickedPath))
+                    {
+                        SilksongMobileAPIPlugin.LogDiagnosticInfo("[NativeModMenu] Import Save cancelled or file not found.");
+                        return;
+                    }
+                    try
+                    {
+                        string defaultSaveDir = Path.Combine(Paths.BepInExRootPath, "default");
+                        Directory.CreateDirectory(defaultSaveDir);
+
+                        string ext = (Path.GetExtension(pickedPath) ?? "").ToLowerInvariant();
+                        int importedFiles = 0;
+                        if (ext == ".zip")
+                        {
+                            using (var archive = ZipFile.OpenRead(pickedPath))
+                            {
+                                foreach (var entry in archive.Entries)
+                                {
+                                    string fileName = Path.GetFileName((entry.FullName ?? "").Replace('\\', '/'));
+                                    if (string.IsNullOrEmpty(fileName) || fileName.StartsWith("._", StringComparison.Ordinal)) continue;
+                                    string eExt = (Path.GetExtension(fileName) ?? "").ToLowerInvariant();
+                                    if (eExt == ".dat" || eExt == ".json" || fileName.IndexOf(".dat.", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    {
+                                        string dest = Path.Combine(defaultSaveDir, fileName);
+                                        entry.ExtractToFile(dest, true);
+                                        importedFiles++;
+                                    }
+                                }
+                            }
+                            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[NativeModMenu] Imported {importedFiles} save file(s) from ZIP '{Path.GetFileName(pickedPath)}' into '{defaultSaveDir}'.");
+                        }
+                        else
+                        {
+                            string fileName = Path.GetFileName(pickedPath);
+                            string dest = Path.Combine(defaultSaveDir, fileName);
+                            File.Copy(pickedPath, dest, true);
+                            importedFiles = 1;
+                            SilksongMobileAPIPlugin.LogDiagnosticInfo($"[NativeModMenu] Imported save '{fileName}' into '{dest}'.");
+                        }
+
+                        if (InGameModManager.Instance != null)
+                            InGameModManager.Instance.GlobalStatusMessage = importedFiles > 0 ? $"Imported {importedFiles} save file(s) to BepInEx/default." : "No save files found in archive.";
+                    }
+                    catch (Exception ex)
+                    {
+                        SilksongMobileAPIPlugin.LogDiagnosticError($"[NativeModMenu] Import Save failed: {ex.Message}");
+                    }
+                }, new[] { "*/*" });
             }
             catch (Exception ex)
             {
-                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[NativeModMenu] ImportSaveData notice: {ex.Message}");
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[NativeModMenu] Import Save picker notice: {ex.Message}");
             }
         }
 
@@ -2632,24 +2777,40 @@ namespace SilksongMobileAPI
         {
             try
             {
-                var loaderType = AccessTools.TypeByName("BepInEx.BepInExLoader");
-                var exportSaveMi = loaderType?.GetMethod("ExportSaveData", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-                if (exportSaveMi != null)
+                string[] candidateDirs = new[]
                 {
-                    string saveDir = Paths.SaveDataPath ?? Application.persistentDataPath;
-                    if (Directory.Exists(saveDir))
+                    Path.Combine(Paths.BepInExRootPath, "default"),
+                    Paths.SaveDataPath,
+                    Application.persistentDataPath
+                };
+                string newestDat = null;
+                DateTime newestTime = DateTime.MinValue;
+                for (int i = 0; i < candidateDirs.Length; i++)
+                {
+                    string d = candidateDirs[i];
+                    if (string.IsNullOrEmpty(d) || !Directory.Exists(d)) continue;
+                    foreach (var f in Directory.GetFiles(d, "user*.dat", SearchOption.AllDirectories))
                     {
-                        var datFiles = Directory.GetFiles(saveDir, "user*.dat", SearchOption.AllDirectories);
-                        if (datFiles.Length > 0)
-                        {
-                            exportSaveMi.Invoke(null, new object[] { datFiles[0] });
-                        }
+                        DateTime wt = File.GetLastWriteTimeUtc(f);
+                        if (wt > newestTime) { newestTime = wt; newestDat = f; }
                     }
+                    if (newestDat != null) break;
+                }
+                if (newestDat != null)
+                {
+                    NativeFilePicker.ExportFile(newestDat, (bool success) =>
+                    {
+                        SilksongMobileAPIPlugin.LogDiagnosticInfo($"[NativeModMenu] Backup Save '{Path.GetFileName(newestDat)}' export result: {success}");
+                    });
+                }
+                else
+                {
+                    SilksongMobileAPIPlugin.LogDiagnosticWarn("[NativeModMenu] Backup Save: no user*.dat save files found in BepInEx/default or SaveDataPath.");
                 }
             }
             catch (Exception ex)
             {
-                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[NativeModMenu] ExportSaveData notice: {ex.Message}");
+                SilksongMobileAPIPlugin.LogDiagnosticWarn($"[NativeModMenu] Backup Save notice: {ex.Message}");
             }
         }
 
@@ -3306,7 +3467,7 @@ namespace SilksongMobileAPI
 
     public static class IrisRemoteUpdater
     {
-        public const string CurrentVersionText = "2.9.8.56";
+        public const string CurrentVersionText = "2.9.8.58";
         private const string DefaultManifestUrl = "https://raw.githubusercontent.com/loreMx0/SilksongMobileAPI/main/00_IRIS/plugin.json";
 
         public static bool IsChecking { get; private set; }
